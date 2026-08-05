@@ -1,0 +1,84 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: wordpress
+    command: --default-authentication-plugin=mysql_native_password --ssl=0
+    healthcheck:
+      # The root/localhost probe also succeeds against MySQL's temporary init
+      # server. TCP auth as the application user succeeds only after final
+      # startup and prevents WordPress setup from racing database creation.
+      test: ["CMD", "mysqladmin", "ping", "--host=127.0.0.1", "--user=wordpress", "--password=wordpress"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  wordpress:
+    image: wordpress:7.0.2-php8.2-fpm
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DEBUG: 1
+    healthcheck:
+      # Core files appear before the image entrypoint writes wp-config.php.
+      # Requiring both prevents WP-CLI setup from racing container bootstrap.
+      test: ["CMD-SHELL", "test -s /var/www/html/wp-config.php && php -r 'require \"/var/www/html/wp-includes/version.php\"; exit(empty($$wp_version));'"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - wordpress_data:/var/www/html
+      - ../../:/var/www/html/wp-content/plugins/wp-rocket-nginx:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+
+  setup:
+    image: wordpress:cli-php8.2
+    profiles: ["setup"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      wordpress:
+        condition: service_healthy
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_USER: wordpress
+    entrypoint: ["/bin/sh"]
+    command: ["/setup/setup.sh"]
+    volumes:
+      - wordpress_data:/var/www/html
+      - ../../:/var/www/html/wp-content/plugins/wp-rocket-nginx:ro
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+      - ./setup.sh:/setup/setup.sh:ro
+
+  nginx:
+    build: ./nginx
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    ports:
+      - "${TEST_PORT:-8090}:80"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - wordpress_data:/var/www/html
+
+volumes:
+  mysql_data:
+  wordpress_data:

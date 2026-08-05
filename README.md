@@ -1,0 +1,98 @@
+# WP Rocket Nginx
+
+WP Rocket Nginx is an unofficial WordPress integration that generates a
+[Rocket-Nginx](https://github.com/SatelliteWP/rocket-nginx) configuration from
+the active WP Rocket settings. Nginx can then serve existing WP Rocket cache
+files directly from disk without starting PHP or WordPress.
+
+The plugin does not replace WP Rocket and does not create page-cache files.
+It mirrors the settings that determine how those files are named and when a
+request must bypass cache.
+
+## Requirements
+
+- WordPress 6.0 or newer
+- PHP 7.4 or newer
+- Nginx
+- WP Rocket for production cache generation
+- Permission for the PHP worker to write under `wp-content/`
+
+## Installation
+
+1. Download `wp-rocket-nginx.zip` from the latest GitHub release.
+2. Install and activate it in WordPress.
+3. Open **Settings > WP Rocket Nginx** and confirm that `default.conf` exists.
+4. Include the generated file inside the site's Nginx `server` block:
+
+   ```nginx
+   include /absolute/path/to/wp-content/wp-rocket-nginx/default.conf;
+   ```
+
+5. Validate and reload Nginx:
+
+   ```bash
+   nginx -t && systemctl reload nginx
+   ```
+
+The configuration regenerates when WP Rocket settings change. Reloading Nginx
+remains an explicit server operation. This keeps a WordPress administrator from
+executing server commands through PHP.
+
+## What is generated
+
+The default output is:
+
+```text
+wp-content/wp-rocket-nginx/default.conf
+```
+
+It includes:
+
+- direct page-cache lookup for desktop, mobile, HTTPS, and gzip variants;
+- query-string rules sourced from WP Rocket;
+- cache bypasses for POST, authenticated users, carts, and maintenance mode;
+- direct Nginx locations for CSS, JavaScript, images, and fonts;
+- a deny rule preventing generated `.conf` files from being downloaded;
+- optional diagnostic `X-Rocket-Nginx-*` headers.
+
+Custom Nginx fragments can be placed under
+`wp-content/wp-rocket-nginx/default/` using Rocket-Nginx's conventions:
+`start.*.conf`, `preprocess.*.conf`, `global.*.conf`, `http.*.conf`,
+`css.*.conf`, `js.*.conf`, and `media.*.conf`.
+
+## Filters
+
+Server operators can customize advanced values in code:
+
+- `wp_rocket_nginx_output_path`
+- `wp_rocket_nginx_config_name`
+- `wp_rocket_nginx_wp_content_folder`
+- `wp_rocket_nginx_query_strings_ignore`
+- `wp_rocket_nginx_cache_reject_cookies`
+- `wp_rocket_nginx_mobile_user_agent`
+- `wp_rocket_nginx_html_cache_control`
+- `wp_rocket_nginx_css_expiration`
+- `wp_rocket_nginx_js_expiration`
+- `wp_rocket_nginx_media_expiration`
+
+The action `wp_rocket_nginx_config_written` fires after an atomic write.
+
+## Development
+
+```bash
+make test       # Fast PHP and configuration checks
+make e2e        # Real WordPress + Nginx Docker tests
+make package    # Build the release zip from committed files
+```
+
+The E2E suite creates real WP Rocket-style cache files and verifies that Nginx
+serves them. It covers the query-string/mobile path reported by James Garrigan
+in [Rocket-Nginx issue #232](https://github.com/SatelliteWP/rocket-nginx/issues/232).
+
+## Credits and license
+
+The Nginx template is derived from Rocket-Nginx 3.1.2 by Maxime Jobin and
+SatelliteWP. See [NOTICE](NOTICE) for attribution.
+
+Released under the MIT License. WP Rocket is a trademark of WP Media. This
+project is independent and is not affiliated with or endorsed by WP Media.
