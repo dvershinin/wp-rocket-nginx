@@ -82,6 +82,7 @@ The action `wp_rocket_nginx_config_written` fires after an atomic write.
 ```bash
 make test       # Fast PHP and configuration checks
 make e2e        # Real WordPress + Nginx Docker tests
+make benchmark  # Compare identical responses through Nginx and WordPress/PHP
 make package    # Build the release zip from committed files
 ```
 
