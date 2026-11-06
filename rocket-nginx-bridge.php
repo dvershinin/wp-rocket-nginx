@@ -1,40 +1,39 @@
 <?php
 /**
- * Plugin Name: WP Rocket Nginx
+ * Plugin Name: Rocket Nginx Bridge
  * Plugin URI: https://github.com/dvershinin/wp-rocket-nginx
  * Description: Generates a Rocket-Nginx configuration from WP Rocket settings so Nginx can serve cached pages without PHP.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Danila Vershinin
  * Author URI: https://www.getpagespeed.com/
- * Update URI: https://github.com/dvershinin/wp-rocket-nginx
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * License: MIT
  * License URI: https://opensource.org/license/mit
- * Text Domain: wp-rocket-nginx
+ * Text Domain: rocket-nginx-bridge
  *
- * @package WPRocketNginx
+ * @package RocketNginxBridge
  */
 
-namespace WPRocketNginx;
+namespace RocketNginxBridge;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! defined( 'WP_ROCKET_NGINX_VERSION' ) ) {
-	define( 'WP_ROCKET_NGINX_VERSION', '1.0.0' );
+if ( ! defined( 'ROCKET_NGINX_BRIDGE_VERSION' ) ) {
+	define( 'ROCKET_NGINX_BRIDGE_VERSION', '1.1.0' );
 }
-if ( ! defined( 'WP_ROCKET_NGINX_PLUGIN_FILE' ) ) {
-	define( 'WP_ROCKET_NGINX_PLUGIN_FILE', __FILE__ );
+if ( ! defined( 'ROCKET_NGINX_BRIDGE_PLUGIN_FILE' ) ) {
+	define( 'ROCKET_NGINX_BRIDGE_PLUGIN_FILE', __FILE__ );
 }
-if ( ! defined( 'WP_ROCKET_NGINX_PLUGIN_DIR' ) ) {
-	define( 'WP_ROCKET_NGINX_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+if ( ! defined( 'ROCKET_NGINX_BRIDGE_PLUGIN_DIR' ) ) {
+	define( 'ROCKET_NGINX_BRIDGE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 }
 
-require_once WP_ROCKET_NGINX_PLUGIN_DIR . 'includes/class-settings-reader.php';
-require_once WP_ROCKET_NGINX_PLUGIN_DIR . 'includes/class-config-writer.php';
-require_once WP_ROCKET_NGINX_PLUGIN_DIR . 'includes/class-admin-page.php';
+require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'includes/class-settings-reader.php';
+require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'includes/class-config-writer.php';
+require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'includes/class-admin-page.php';
 
 /**
  * Main plugin class.
@@ -77,16 +76,43 @@ final class Plugin {
 	 * @return void
 	 */
 	public function init() {
+		$this->migrate_options();
+
 		add_action( 'update_option_wp_rocket_settings', array( $this, 'regenerate_config' ), 10, 2 );
 		add_action( 'rocket_after_save_options', array( $this, 'regenerate_config' ) );
-		add_action( 'update_option_wp_rocket_nginx_settings', array( $this, 'regenerate_config' ) );
+		add_action( 'update_option_rocket_nginx_bridge_settings', array( $this, 'regenerate_config' ) );
 
 		$this->admin_page->init();
 
 		add_filter(
-			'plugin_action_links_' . plugin_basename( WP_ROCKET_NGINX_PLUGIN_FILE ),
+			'plugin_action_links_' . plugin_basename( ROCKET_NGINX_BRIDGE_PLUGIN_FILE ),
 			array( $this, 'add_action_links' )
 		);
+	}
+
+	/**
+	 * Migrate the 1.0.0 option names once without replacing existing values.
+	 *
+	 * @return void
+	 */
+	public function migrate_options() {
+		if ( get_option( 'rocket_nginx_bridge_options_migrated', false ) ) {
+			return;
+		}
+
+		$missing = new \stdClass();
+		foreach ( array( 'settings', 'last_generated', 'last_error' ) as $suffix ) {
+			$old_name = 'wp_rocket_nginx_' . $suffix;
+			$new_name = 'rocket_nginx_bridge_' . $suffix;
+			if ( $missing === get_option( $new_name, $missing ) ) {
+				$value = get_option( $old_name, $missing );
+				if ( $missing !== $value ) {
+					update_option( $new_name, $value, false );
+					delete_option( $old_name );
+				}
+			}
+		}
+		update_option( 'rocket_nginx_bridge_options_migrated', true, false );
 	}
 
 	/**
@@ -109,8 +135,8 @@ final class Plugin {
 	public function add_action_links( $links ) {
 		$settings_link = sprintf(
 			'<a href="%s">%s</a>',
-			esc_url( admin_url( 'options-general.php?page=wp-rocket-nginx' ) ),
-			esc_html__( 'Settings', 'wp-rocket-nginx' )
+			esc_url( admin_url( 'options-general.php?page=rocket-nginx-bridge' ) ),
+			esc_html__( 'Settings', 'rocket-nginx-bridge' )
 		);
 
 		array_unshift( $links, $settings_link );
@@ -145,7 +171,7 @@ function activate() {
  *
  * @return Plugin|null
  */
-function wp_rocket_nginx() {
+function rocket_nginx_bridge() {
 	static $instance = null;
 
 	if ( null === $instance ) {
@@ -155,5 +181,5 @@ function wp_rocket_nginx() {
 	return $instance;
 }
 
-register_activation_hook( WP_ROCKET_NGINX_PLUGIN_FILE, __NAMESPACE__ . '\\activate' );
-add_action( 'plugins_loaded', array( wp_rocket_nginx(), 'init' ) );
+register_activation_hook( ROCKET_NGINX_BRIDGE_PLUGIN_FILE, __NAMESPACE__ . '\\activate' );
+add_action( 'plugins_loaded', array( rocket_nginx_bridge(), 'init' ) );

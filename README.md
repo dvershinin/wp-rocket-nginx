@@ -1,6 +1,6 @@
-# WP Rocket Nginx
+# Rocket Nginx Bridge
 
-WP Rocket Nginx is an unofficial WordPress integration that generates a
+Rocket Nginx Bridge is an unofficial WordPress integration that generates a
 [Rocket-Nginx](https://github.com/SatelliteWP/rocket-nginx) configuration from
 the active WP Rocket settings. Nginx can then serve existing WP Rocket cache
 files directly from disk without starting PHP or WordPress.
@@ -19,9 +19,9 @@ request must bypass cache.
 
 ## Installation
 
-1. Download `wp-rocket-nginx.zip` from the latest GitHub release.
+1. Download `rocket-nginx-bridge.zip` from the latest GitHub release.
 2. Install and activate it in WordPress.
-3. Open **Settings > WP Rocket Nginx** and confirm that `default.conf` exists.
+3. Open **Settings > Rocket Nginx Bridge** and confirm that `default.conf` exists.
 4. Include the generated file inside the site's Nginx `server` block:
 
    ```nginx
@@ -64,18 +64,18 @@ Custom Nginx fragments can be placed under
 
 Server operators can customize advanced values in code:
 
-- `wp_rocket_nginx_output_path`
-- `wp_rocket_nginx_config_name`
-- `wp_rocket_nginx_wp_content_folder`
-- `wp_rocket_nginx_query_strings_ignore`
-- `wp_rocket_nginx_cache_reject_cookies`
-- `wp_rocket_nginx_mobile_user_agent`
-- `wp_rocket_nginx_html_cache_control`
-- `wp_rocket_nginx_css_expiration`
-- `wp_rocket_nginx_js_expiration`
-- `wp_rocket_nginx_media_expiration`
+- `rocket_nginx_bridge_output_path`
+- `rocket_nginx_bridge_config_name`
+- `rocket_nginx_bridge_wp_content_folder`
+- `rocket_nginx_bridge_query_strings_ignore`
+- `rocket_nginx_bridge_cache_reject_cookies`
+- `rocket_nginx_bridge_mobile_user_agent`
+- `rocket_nginx_bridge_html_cache_control`
+- `rocket_nginx_bridge_css_expiration`
+- `rocket_nginx_bridge_js_expiration`
+- `rocket_nginx_bridge_media_expiration`
 
-The action `wp_rocket_nginx_config_written` fires after an atomic write.
+The action `rocket_nginx_bridge_config_written` fires after an atomic write.
 
 ## Development
 

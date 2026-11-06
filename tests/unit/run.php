@@ -5,8 +5,8 @@
 
 require __DIR__ . '/bootstrap.php';
 
-use WPRocketNginx\Config_Writer;
-use WPRocketNginx\Settings_Reader;
+use RocketNginxBridge\Config_Writer;
+use RocketNginxBridge\Settings_Reader;
 
 $failures = 0;
 $tests    = 0;
@@ -110,18 +110,66 @@ test_case(
 		assert_true( filesize( $writer->get_output_file() ) > 1000, 'Output file should be complete.' );
 		assert_true( is_int( $writer->get_last_generated() ), 'Generation time should be recorded.' );
 		assert_same( '', $writer->get_last_error(), 'Successful write should clear old errors.' );
-		assert_same( 'wp_rocket_nginx_config_written', $GLOBALS['wp_actions'][0][0], 'Integrations should receive the write action.' );
+		assert_same( 'rocket_nginx_bridge_config_written', $GLOBALS['wp_actions'][0][0], 'Integrations should receive the write action.' );
 	}
 );
 
 test_case(
 	'plugin entrypoint exposes a scope-independent singleton',
 	function () {
-		require_once WP_ROCKET_NGINX_PLUGIN_DIR . 'wp-rocket-nginx.php';
-		$first  = WPRocketNginx\wp_rocket_nginx();
-		$second = WPRocketNginx\wp_rocket_nginx();
-		assert_true( $first instanceof WPRocketNginx\Plugin, 'Entrypoint must return the plugin instance.' );
+		require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'rocket-nginx-bridge.php';
+		$first  = RocketNginxBridge\rocket_nginx_bridge();
+		$second = RocketNginxBridge\rocket_nginx_bridge();
+		assert_true( $first instanceof RocketNginxBridge\Plugin, 'Entrypoint must return the plugin instance.' );
 		assert_true( $first === $second, 'Entrypoint must return the same instance on every call.' );
+	}
+);
+
+test_case(
+	'legacy options migrate once and old values are deleted',
+	function () {
+		$GLOBALS['wp_options'] = array(
+			'wp_rocket_nginx_settings'       => array( 'debug' => true ),
+			'wp_rocket_nginx_last_generated' => 123,
+			'wp_rocket_nginx_last_error'     => false,
+		);
+		RocketNginxBridge\rocket_nginx_bridge()->init();
+		foreach ( array( 'settings' => array( 'debug' => true ), 'last_generated' => 123, 'last_error' => false ) as $suffix => $value ) {
+			assert_same( $value, get_option( 'rocket_nginx_bridge_' . $suffix ), 'Legacy value must be copied.' );
+			assert_true( ! array_key_exists( 'wp_rocket_nginx_' . $suffix, $GLOBALS['wp_options'] ), 'Migrated old option must be deleted.' );
+		}
+		assert_same( true, get_option( 'rocket_nginx_bridge_options_migrated' ), 'Migration must be marked complete.' );
+		$after = $GLOBALS['wp_options'];
+		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		assert_same( $after, $GLOBALS['wp_options'], 'Repeated migration must be idempotent.' );
+		$GLOBALS['wp_options']['wp_rocket_nginx_last_error'] = 'late legacy value';
+		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		assert_same( 'late legacy value', get_option( 'wp_rocket_nginx_last_error' ), 'Completed migration must skip legacy options.' );
+	}
+);
+
+test_case(
+	'existing new options are untouched by migration',
+	function () {
+		$GLOBALS['wp_options'] = array();
+		foreach ( array( 'settings', 'last_generated', 'last_error' ) as $suffix ) {
+			$GLOBALS['wp_options'][ 'wp_rocket_nginx_' . $suffix ] = 'old';
+			$GLOBALS['wp_options'][ 'rocket_nginx_bridge_' . $suffix ] = false;
+		}
+		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		foreach ( array( 'settings', 'last_generated', 'last_error' ) as $suffix ) {
+			assert_same( false, get_option( 'rocket_nginx_bridge_' . $suffix ), 'Existing new value must remain untouched, including false.' );
+			assert_same( 'old', get_option( 'wp_rocket_nginx_' . $suffix ), 'Unmigrated old value must remain untouched.' );
+		}
+	}
+);
+
+test_case(
+	'migration with neither option present creates no data options',
+	function () {
+		$GLOBALS['wp_options'] = array();
+		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		assert_same( array( 'rocket_nginx_bridge_options_migrated' => true ), $GLOBALS['wp_options'], 'Only the one-time guard may be created.' );
 	}
 );
 

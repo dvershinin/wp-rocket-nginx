@@ -40,4 +40,4 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --title "WP Rocket Nginx ${GITHUB_REF_NAME#v}"
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --title "Rocket Nginx Bridge ${GITHUB_REF_NAME#v}"

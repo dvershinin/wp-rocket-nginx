@@ -1,6 +1,6 @@
 SHELL := /bin/sh
-VERSION := $(shell sed -n 's/^ \* Version: //p' wp-rocket-nginx.php)
-PACKAGE_FILES := wp-rocket-nginx.php includes templates LICENSE NOTICE README.md readme.txt
+VERSION := $(shell sed -n 's/^ \* Version: //p' rocket-nginx-bridge.php)
+PACKAGE_FILES := rocket-nginx-bridge.php includes templates LICENSE NOTICE README.md readme.txt
 
 .PHONY: test e2e benchmark package clean
 
@@ -18,7 +18,7 @@ benchmark:
 
 package:
 	mkdir -p dist
-	git archive --format=zip --prefix=wp-rocket-nginx/ --output="dist/wp-rocket-nginx-$(VERSION).zip" HEAD $(PACKAGE_FILES)
+	git archive --format=zip --prefix=rocket-nginx-bridge/ --output="dist/rocket-nginx-bridge-$(VERSION).zip" HEAD $(PACKAGE_FILES)
 
 clean:
 	rm -rf dist

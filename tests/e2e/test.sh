@@ -2,12 +2,12 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-compose_project="wp-rocket-nginx-e2e-$$"
+compose_project="rocket-nginx-bridge-e2e-$$"
 test_port=${TEST_PORT:-8090}
 base_url="http://127.0.0.1:${test_port}"
-api_url="${base_url}/wp-json/wp-rocket-nginx-test/v1"
-headers_file=$(mktemp /tmp/wp-rocket-nginx-headers.XXXXXX)
-body_file=$(mktemp /tmp/wp-rocket-nginx-body.XXXXXX)
+api_url="${base_url}/wp-json/rocket-nginx-bridge-test/v1"
+headers_file=$(mktemp /tmp/rocket-nginx-bridge-headers.XXXXXX)
+body_file=$(mktemp /tmp/rocket-nginx-bridge-body.XXXXXX)
 
 compose() {
     TEST_PORT="$test_port" docker compose --project-name "$compose_project" --file "$script_dir/docker-compose.yml" "$@"

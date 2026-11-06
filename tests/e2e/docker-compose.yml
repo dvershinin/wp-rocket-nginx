@@ -39,7 +39,7 @@ services:
       start_period: 20s
     volumes:
       - wordpress_data:/var/www/html
-      - ../../:/var/www/html/wp-content/plugins/wp-rocket-nginx:ro
+      - ../../:/var/www/html/wp-content/plugins/rocket-nginx-bridge:ro
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
 
   setup:
@@ -60,7 +60,7 @@ services:
     command: ["/setup/setup.sh"]
     volumes:
       - wordpress_data:/var/www/html
-      - ../../:/var/www/html/wp-content/plugins/wp-rocket-nginx:ro
+      - ../../:/var/www/html/wp-content/plugins/rocket-nginx-bridge:ro
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./setup.sh:/setup/setup.sh:ro
 

@@ -2,10 +2,10 @@
 /**
  * Generate and atomically write the Nginx configuration.
  *
- * @package WPRocketNginx
+ * @package RocketNginxBridge
  */
 
-namespace WPRocketNginx;
+namespace RocketNginxBridge;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -17,10 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Config_Writer {
 
 	/** Last successful generation timestamp option. */
-	const LAST_GENERATED_OPTION = 'wp_rocket_nginx_last_generated';
+	const LAST_GENERATED_OPTION = 'rocket_nginx_bridge_last_generated';
 
 	/** Last generation error option. */
-	const LAST_ERROR_OPTION = 'wp_rocket_nginx_last_error';
+	const LAST_ERROR_OPTION = 'rocket_nginx_bridge_last_error';
 
 	/**
 	 * Settings reader.
@@ -43,7 +43,7 @@ final class Config_Writer {
 	 */
 	public function __construct( Settings_Reader $settings_reader ) {
 		$this->settings_reader = $settings_reader;
-		$this->template_file   = WP_ROCKET_NGINX_PLUGIN_DIR . 'templates/rocket-nginx.php';
+		$this->template_file   = ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'templates/rocket-nginx.php';
 	}
 
 	/**
@@ -66,16 +66,19 @@ final class Config_Writer {
 		}
 
 		$filename = $this->get_output_file();
-		$tempfile = tempnam( $output_path, '.wp-rocket-nginx-' );
+		$tempfile = tempnam( $output_path, '.rocket-nginx-bridge-' );
 
 		if ( false === $tempfile ) {
 			return $this->error( 'tempfile_failed', 'Could not create a temporary configuration file.' );
 		}
 
 		$written = file_put_contents( $tempfile, $config, LOCK_EX );
+		// Atomic replace: Nginx may read the file at any moment, so it must never see a partial write.
+		// WP_Filesystem::move() copies and deletes, which is not atomic.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod, WordPress.WP.AlternativeFunctions.rename_rename
 		if ( false === $written || ! chmod( $tempfile, 0644 ) || ! rename( $tempfile, $filename ) ) {
 			if ( file_exists( $tempfile ) ) {
-				unlink( $tempfile );
+				wp_delete_file( $tempfile );
 			}
 			return $this->error( 'write_failed', 'Could not atomically write the Rocket-Nginx configuration file.' );
 		}
@@ -91,7 +94,7 @@ final class Config_Writer {
 		 * @param string $config       Generated configuration.
 		 * @param int    $generated_at Unix timestamp.
 		 */
-		do_action( 'wp_rocket_nginx_config_written', $filename, $config, $generated_at );
+		do_action( 'rocket_nginx_bridge_config_written', $filename, $config, $generated_at );
 
 		return true;
 	}
