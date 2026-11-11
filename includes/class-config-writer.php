@@ -2,10 +2,10 @@
 /**
  * Generate and atomically write the Nginx configuration.
  *
- * @package RocketNginxBridge
+ * @package GetPageSpeedCacheConfiguration
  */
 
-namespace RocketNginxBridge;
+namespace GetPageSpeedCacheConfiguration;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -17,10 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Config_Writer {
 
 	/** Last successful generation timestamp option. */
-	const LAST_GENERATED_OPTION = 'rocket_nginx_bridge_last_generated';
+	const LAST_GENERATED_OPTION = 'getpagespeed_cache_configuration_last_generated';
 
 	/** Last generation error option. */
-	const LAST_ERROR_OPTION = 'rocket_nginx_bridge_last_error';
+	const LAST_ERROR_OPTION = 'getpagespeed_cache_configuration_last_error';
 
 	/**
 	 * Settings reader.
@@ -43,7 +43,7 @@ final class Config_Writer {
 	 */
 	public function __construct( Settings_Reader $settings_reader ) {
 		$this->settings_reader = $settings_reader;
-		$this->template_file   = ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'templates/rocket-nginx.php';
+		$this->template_file   = GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'templates/rocket-nginx.php';
 	}
 
 	/**
@@ -62,11 +62,11 @@ final class Config_Writer {
 		$config_dir  = $output_path . $config_name . '/';
 
 		if ( ! wp_mkdir_p( $output_path ) || ! wp_mkdir_p( $config_dir ) ) {
-			return $this->error( 'mkdir_failed', 'Could not create the Rocket-Nginx configuration directory.' );
+			return $this->error( 'mkdir_failed', 'Could not create the Nginx configuration directory.' );
 		}
 
 		$filename = $this->get_output_file();
-		$tempfile = tempnam( $output_path, '.rocket-nginx-bridge-' );
+		$tempfile = tempnam( $output_path, '.getpagespeed-cache-configuration-' );
 
 		if ( false === $tempfile ) {
 			return $this->error( 'tempfile_failed', 'Could not create a temporary configuration file.' );
@@ -80,7 +80,7 @@ final class Config_Writer {
 			if ( file_exists( $tempfile ) ) {
 				wp_delete_file( $tempfile );
 			}
-			return $this->error( 'write_failed', 'Could not atomically write the Rocket-Nginx configuration file.' );
+			return $this->error( 'write_failed', 'Could not atomically write the Nginx configuration file.' );
 		}
 
 		$generated_at = time();
@@ -94,7 +94,7 @@ final class Config_Writer {
 		 * @param string $config       Generated configuration.
 		 * @param int    $generated_at Unix timestamp.
 		 */
-		do_action( 'rocket_nginx_bridge_config_written', $filename, $config, $generated_at );
+		do_action( 'getpagespeed_cache_configuration_config_written', $filename, $config, $generated_at );
 
 		return true;
 	}
@@ -106,11 +106,11 @@ final class Config_Writer {
 	 */
 	public function generate() {
 		if ( ! file_exists( $this->template_file ) ) {
-			return $this->error( 'template_not_found', 'The Rocket-Nginx template was not found.' );
+			return $this->error( 'template_not_found', 'The Nginx configuration template was not found.' );
 		}
 
 		if ( ! is_readable( $this->template_file ) ) {
-			return $this->error( 'template_not_readable', 'The Rocket-Nginx template is not readable.' );
+			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
 		}
 
 		$debug               = $this->settings_reader->is_debug_enabled() ? 1 : 0;
@@ -205,6 +205,15 @@ final class Config_Writer {
 	 */
 	public function get_output_file() {
 		return $this->settings_reader->get_output_path() . $this->settings_reader->get_config_name() . '.conf';
+	}
+
+	/**
+	 * Return the configuration path used before 1.2.0.
+	 *
+	 * @return string
+	 */
+	public function get_legacy_output_file() {
+		return $this->settings_reader->get_legacy_output_path() . $this->settings_reader->get_config_name() . '.conf';
 	}
 
 	/** @return bool */

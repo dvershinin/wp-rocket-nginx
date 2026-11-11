@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-config_file=/var/www/html/wp-content/wp-rocket-nginx/default.conf
+config_file=/var/www/html/wp-content/uploads/getpagespeed-cache-configuration/default.conf
 config_dir=$(dirname "$config_file")
 
 while [ ! -s "$config_file" ]; do

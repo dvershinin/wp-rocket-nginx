@@ -2,10 +2,10 @@
 /**
  * Read and normalize settings used to generate the Nginx configuration.
  *
- * @package RocketNginxBridge
+ * @package GetPageSpeedCacheConfiguration
  */
 
-namespace RocketNginxBridge;
+namespace GetPageSpeedCacheConfiguration;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -20,7 +20,7 @@ final class Settings_Reader {
 	const WP_ROCKET_OPTION = 'wp_rocket_settings';
 
 	/** This plugin's settings option. */
-	const OPTION_NAME = 'rocket_nginx_bridge_settings';
+	const OPTION_NAME = 'getpagespeed_cache_configuration_settings';
 
 	/** Default mobile user-agent pattern used by Rocket-Nginx. */
 	const DEFAULT_MOBILE_UA = '2.0 MMP|240x320|400X240|AvantGo|BlackBerry|Blazer|Cellphone|Danger|DoCoMo|Elaine/3.0|EudoraWeb|Googlebot-Mobile|hiptop|IEMobile|KYOCERA/WX310K|LG/U990|MIDP-2.|MMEF20|MOT-V|NetFront|Newt|Nintendo Wii|Nitro|Nokia|Opera Mini|Palm|PlayStation Portable|portalmmm|Proxinet|ProxiNet|SHARP-TQ-GX10|SHG-i900|Small|SonyEricsson|Symbian OS|SymbianOS|TS21i-10|UP.Browser|UP.Link|webOS|Windows CE|WinWAP|YahooSeeker/M1A1-R2D2|iPhone|iPad|iPod|Android';
@@ -122,7 +122,7 @@ final class Settings_Reader {
 	 */
 	public function get_mobile_user_agent() {
 		$pattern = $this->is_mobile_cache_enabled() ? self::DEFAULT_MOBILE_UA : 'not_v_a_l_i_d';
-		return $this->clean_nginx_value( (string) apply_filters( 'rocket_nginx_bridge_mobile_user_agent', $pattern ) );
+		return $this->clean_nginx_value( (string) apply_filters( 'getpagespeed_cache_configuration_mobile_user_agent', $pattern ) );
 	}
 
 	/**
@@ -138,7 +138,7 @@ final class Settings_Reader {
 			$cookies = array_merge( $cookies, $settings['cache_reject_cookies'] );
 		}
 
-		return $this->clean_regex_fragments( apply_filters( 'rocket_nginx_bridge_cache_reject_cookies', $cookies ) );
+		return $this->clean_regex_fragments( apply_filters( 'getpagespeed_cache_configuration_cache_reject_cookies', $cookies ) );
 	}
 
 	/**
@@ -161,7 +161,7 @@ final class Settings_Reader {
 	 * @return array
 	 */
 	public function get_query_strings_ignore() {
-		$values = apply_filters( 'rocket_nginx_bridge_query_strings_ignore', self::DEFAULT_QUERY_STRINGS_IGNORE );
+		$values = apply_filters( 'getpagespeed_cache_configuration_query_strings_ignore', self::DEFAULT_QUERY_STRINGS_IGNORE );
 		return $this->clean_parameter_names( is_array( $values ) ? $values : array() );
 	}
 
@@ -172,7 +172,7 @@ final class Settings_Reader {
 	 */
 	public function get_wp_content_folder() {
 		$folder = sanitize_file_name( basename( wp_normalize_path( WP_CONTENT_DIR ) ) );
-		$folder = (string) apply_filters( 'rocket_nginx_bridge_wp_content_folder', $folder );
+		$folder = (string) apply_filters( 'getpagespeed_cache_configuration_wp_content_folder', $folder );
 		return '' !== sanitize_file_name( $folder ) ? sanitize_file_name( $folder ) : 'wp-content';
 	}
 
@@ -182,9 +182,9 @@ final class Settings_Reader {
 	 * @return string
 	 */
 	public function get_output_path() {
-		// Keep the existing output directory because server blocks already include this path.
-		$default = trailingslashit( WP_CONTENT_DIR ) . 'wp-rocket-nginx/';
-		$path    = wp_normalize_path( (string) apply_filters( 'rocket_nginx_bridge_output_path', $default ) );
+		$uploads = wp_upload_dir( null, false );
+		$default = trailingslashit( $uploads['basedir'] ) . 'getpagespeed-cache-configuration/';
+		$path    = wp_normalize_path( (string) apply_filters( 'getpagespeed_cache_configuration_output_path', $default ) );
 
 		if ( ! preg_match( '~^(?:[A-Za-z]:/|/)~', $path ) ) {
 			$path = $default;
@@ -194,34 +194,45 @@ final class Settings_Reader {
 	}
 
 	/**
+	 * Return the output directory used before 1.2.0.
+	 *
+	 * Read-only: the plugin no longer writes here and only detects leftover files.
+	 *
+	 * @return string
+	 */
+	public function get_legacy_output_path() {
+		return trailingslashit( wp_normalize_path( WP_CONTENT_DIR ) ) . 'wp-rocket-nginx/';
+	}
+
+	/**
 	 * Return the generated configuration basename.
 	 *
 	 * @return string
 	 */
 	public function get_config_name() {
-		$name = sanitize_file_name( (string) apply_filters( 'rocket_nginx_bridge_config_name', 'default' ) );
+		$name = sanitize_file_name( (string) apply_filters( 'getpagespeed_cache_configuration_config_name', 'default' ) );
 		return '' !== $name ? $name : 'default';
 	}
 
 	/** @return string */
 	public function get_html_cache_control() {
-		$value = (string) apply_filters( 'rocket_nginx_bridge_html_cache_control', 'no-cache, no-store, must-revalidate' );
+		$value = (string) apply_filters( 'getpagespeed_cache_configuration_html_cache_control', 'no-cache, no-store, must-revalidate' );
 		return $this->clean_nginx_value( $value );
 	}
 
 	/** @return string */
 	public function get_css_expiration() {
-		return $this->clean_expiration( apply_filters( 'rocket_nginx_bridge_css_expiration', '90d' ) );
+		return $this->clean_expiration( apply_filters( 'getpagespeed_cache_configuration_css_expiration', '90d' ) );
 	}
 
 	/** @return string */
 	public function get_js_expiration() {
-		return $this->clean_expiration( apply_filters( 'rocket_nginx_bridge_js_expiration', '90d' ) );
+		return $this->clean_expiration( apply_filters( 'getpagespeed_cache_configuration_js_expiration', '90d' ) );
 	}
 
 	/** @return string */
 	public function get_media_expiration() {
-		return $this->clean_expiration( apply_filters( 'rocket_nginx_bridge_media_expiration', '90d' ) );
+		return $this->clean_expiration( apply_filters( 'getpagespeed_cache_configuration_media_expiration', '90d' ) );
 	}
 
 	/** @return string */

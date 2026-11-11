@@ -1,4 +1,4 @@
-Rocket Nginx Bridge includes a configuration template derived from Rocket-Nginx:
+GetPageSpeed Cache Configuration includes a configuration template derived from Rocket-Nginx:
 https://github.com/SatelliteWP/rocket-nginx
 
 Rocket-Nginx was created by Maxime Jobin and is maintained by SatelliteWP.
@@ -6,4 +6,4 @@ The derived portions remain available under the MIT License included in this
 repository.
 
 WP Rocket is a trademark of WP Media. This project is independent and is not
-affiliated with or endorsed by WP Media.
+affiliated with or endorsed by WP Media, SatelliteWP, or the Rocket-Nginx project.

@@ -1,6 +1,6 @@
-# Rocket Nginx Bridge
+# GetPageSpeed Cache Configuration
 
-Rocket Nginx Bridge is an unofficial WordPress integration that generates a
+GetPageSpeed Cache Configuration is an unofficial WordPress integration that generates a
 [Rocket-Nginx](https://github.com/SatelliteWP/rocket-nginx) configuration from
 the active WP Rocket settings. Nginx can then serve existing WP Rocket cache
 files directly from disk without starting PHP or WordPress.
@@ -15,17 +15,17 @@ request must bypass cache.
 - PHP 7.4 or newer
 - Nginx
 - WP Rocket for production cache generation
-- Permission for the PHP worker to write under `wp-content/`
+- Permission for the PHP worker to write under the uploads directory
 
 ## Installation
 
-1. Download `rocket-nginx-bridge.zip` from the latest GitHub release.
+1. Download `getpagespeed-cache-configuration.zip` from the latest GitHub release.
 2. Install and activate it in WordPress.
-3. Open **Settings > Rocket Nginx Bridge** and confirm that `default.conf` exists.
+3. Open **Settings > GetPageSpeed Cache Configuration** and confirm that `default.conf` exists.
 4. Include the generated file inside the site's Nginx `server` block:
 
    ```nginx
-   include /absolute/path/to/wp-content/wp-rocket-nginx/default.conf;
+   include /absolute/path/to/wp-content/uploads/getpagespeed-cache-configuration/default.conf;
    ```
 
 5. Validate and reload Nginx:
@@ -43,7 +43,7 @@ executing server commands through PHP.
 The default output is:
 
 ```text
-wp-content/wp-rocket-nginx/default.conf
+wp-content/uploads/getpagespeed-cache-configuration/default.conf
 ```
 
 It includes:
@@ -56,7 +56,7 @@ It includes:
 - optional diagnostic `X-Rocket-Nginx-*` headers.
 
 Custom Nginx fragments can be placed under
-`wp-content/wp-rocket-nginx/default/` using Rocket-Nginx's conventions:
+`wp-content/uploads/getpagespeed-cache-configuration/default/` using Rocket-Nginx's conventions:
 `start.*.conf`, `preprocess.*.conf`, `global.*.conf`, `http.*.conf`,
 `css.*.conf`, `js.*.conf`, and `media.*.conf`.
 
@@ -64,18 +64,18 @@ Custom Nginx fragments can be placed under
 
 Server operators can customize advanced values in code:
 
-- `rocket_nginx_bridge_output_path`
-- `rocket_nginx_bridge_config_name`
-- `rocket_nginx_bridge_wp_content_folder`
-- `rocket_nginx_bridge_query_strings_ignore`
-- `rocket_nginx_bridge_cache_reject_cookies`
-- `rocket_nginx_bridge_mobile_user_agent`
-- `rocket_nginx_bridge_html_cache_control`
-- `rocket_nginx_bridge_css_expiration`
-- `rocket_nginx_bridge_js_expiration`
-- `rocket_nginx_bridge_media_expiration`
+- `getpagespeed_cache_configuration_output_path`
+- `getpagespeed_cache_configuration_config_name`
+- `getpagespeed_cache_configuration_wp_content_folder`
+- `getpagespeed_cache_configuration_query_strings_ignore`
+- `getpagespeed_cache_configuration_cache_reject_cookies`
+- `getpagespeed_cache_configuration_mobile_user_agent`
+- `getpagespeed_cache_configuration_html_cache_control`
+- `getpagespeed_cache_configuration_css_expiration`
+- `getpagespeed_cache_configuration_js_expiration`
+- `getpagespeed_cache_configuration_media_expiration`
 
-The action `rocket_nginx_bridge_config_written` fires after an atomic write.
+The action `getpagespeed_cache_configuration_config_written` fires after an atomic write.
 
 ## Development
 
@@ -96,4 +96,5 @@ The Nginx template is derived from Rocket-Nginx 3.1.2 by Maxime Jobin and
 SatelliteWP. See [NOTICE](NOTICE) for attribution.
 
 Released under the MIT License. WP Rocket is a trademark of WP Media. This
-project is independent and is not affiliated with or endorsed by WP Media.
+project is independent and is not affiliated with or endorsed by WP Media,
+SatelliteWP, or the Rocket-Nginx project.

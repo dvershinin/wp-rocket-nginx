@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 - 2026-11-11
+
+- Rename Rocket Nginx Bridge to GetPageSpeed Cache Configuration (slug `getpagespeed-cache-configuration`) following wordpress.org review.
+- Write the configuration to `wp-content/uploads/getpagespeed-cache-configuration/` instead of `wp-content/wp-rocket-nginx/`. Update the Nginx `include` line once; an admin notice shows both paths while the old file exists.
+- Rename options, hooks and filters to the `getpagespeed_cache_configuration_` prefix; options from 1.0.0 and 1.1.0 migrate automatically.
+
 ## 1.1.0 - 2026-11-07
 
 - Rename WP Rocket Nginx to Rocket Nginx Bridge for wordpress.org submission.

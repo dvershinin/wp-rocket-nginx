@@ -2,12 +2,12 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-compose_project="rocket-nginx-bridge-e2e-$$"
+compose_project="getpagespeed-cache-configuration-e2e-$$"
 test_port=${TEST_PORT:-8090}
 base_url="http://127.0.0.1:${test_port}"
-api_url="${base_url}/wp-json/rocket-nginx-bridge-test/v1"
-headers_file=$(mktemp /tmp/rocket-nginx-bridge-headers.XXXXXX)
-body_file=$(mktemp /tmp/rocket-nginx-bridge-body.XXXXXX)
+api_url="${base_url}/wp-json/getpagespeed-cache-configuration-test/v1"
+headers_file=$(mktemp /tmp/getpagespeed-cache-configuration-headers.XXXXXX)
+body_file=$(mktemp /tmp/getpagespeed-cache-configuration-body.XXXXXX)
 
 compose() {
     TEST_PORT="$test_port" docker compose --project-name "$compose_project" --file "$script_dir/docker-compose.yml" "$@"
@@ -105,7 +105,7 @@ assert_header Cache-Control 'max-age=7776000'
 assert_body 'body{color:#123}'
 echo 'PASS Nginx serves static assets directly'
 
-request "${base_url}/wp-content/wp-rocket-nginx/default.conf"
+request "${base_url}/wp-content/uploads/getpagespeed-cache-configuration/default.conf"
 grep -Eq '^HTTP/[0-9.]+ 403' "$headers_file" || fail 'Generated configuration must return HTTP 403.'
 echo 'PASS generated configuration is not web-accessible'
 

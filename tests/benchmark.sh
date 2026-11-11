@@ -2,13 +2,13 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-compose_project="rocket-nginx-bridge-benchmark-$$"
+compose_project="getpagespeed-cache-configuration-benchmark-$$"
 test_port=${TEST_PORT:-18091}
 duration=${DURATION:-15s}
 connections=${CONNECTIONS:-16}
 runs=${RUNS:-5}
 base_url="http://127.0.0.1:${test_port}"
-output_dir=${OUTPUT_DIR:-$(mktemp -d /tmp/rocket-nginx-bridge-benchmark.XXXXXX)}
+output_dir=${OUTPUT_DIR:-$(mktemp -d /tmp/getpagespeed-cache-configuration-benchmark.XXXXXX)}
 source_body="$output_dir/source-body.html"
 php_body="$output_dir/php-fpm-body.html"
 cache_body="$output_dir/nginx-body.html"
@@ -45,7 +45,7 @@ curl --fail --silent --show-error \
     --header 'Content-Type: application/json' \
     --request POST \
     --data-binary @"$payload_file" \
-    "${base_url}/wp-json/rocket-nginx-bridge-test/v1/cache" | grep -q '"created":true'
+    "${base_url}/wp-json/getpagespeed-cache-configuration-test/v1/cache" | grep -q '"created":true'
 
 jq --null-input \
     --arg content '<?php header("Content-Type: text/html"); readfile("/var/www/html/wp-content/cache/wp-rocket/nginx/benchmark/index.html");' \
@@ -56,7 +56,7 @@ curl --fail --silent --show-error \
     --header 'Content-Type: application/json' \
     --request POST \
     --data-binary @"$payload_file" \
-    "${base_url}/wp-json/rocket-nginx-bridge-test/v1/asset" | grep -q '"created":true'
+    "${base_url}/wp-json/getpagespeed-cache-configuration-test/v1/asset" | grep -q '"created":true'
 
 curl --fail --silent --show-error \
     --dump-header "$headers_file" \

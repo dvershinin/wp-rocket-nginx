@@ -5,8 +5,8 @@
 
 require __DIR__ . '/bootstrap.php';
 
-use RocketNginxBridge\Config_Writer;
-use RocketNginxBridge\Settings_Reader;
+use GetPageSpeedCacheConfiguration\Config_Writer;
+use GetPageSpeedCacheConfiguration\Settings_Reader;
 
 $failures = 0;
 $tests    = 0;
@@ -94,9 +94,19 @@ test_case(
 	function () {
 		$config = new_writer()->generate();
 		assert_true( false !== strpos( $config, 'location ~* \\.css$' ), 'CSS must have an Nginx static location.' );
-		assert_true( false !== strpos( $config, 'wp-rocket-nginx/.*\\.conf$' ), 'Generated configuration must be denied over HTTP.' );
+		assert_true( false !== strpos( $config, '/(?:getpagespeed-cache-configuration|wp-rocket-nginx)/.*\\.conf$' ), 'Generated and legacy configuration must be denied over HTTP.' );
 		assert_true( false === strpos( $config, 'proxy_pass' ), 'Static assets must not be proxied.' );
 		assert_true( false === strpos( $config, 'exec(' ), 'Generated configuration must not expose shell execution.' );
+	}
+);
+
+test_case(
+	'configuration is written under the uploads directory',
+	function () {
+		$reader = new Settings_Reader();
+		assert_same( WP_CONTENT_DIR . '/uploads/getpagespeed-cache-configuration/', $reader->get_output_path(), 'Default output must live in uploads.' );
+		assert_same( WP_CONTENT_DIR . '/uploads/getpagespeed-cache-configuration/default.conf', new_writer()->get_output_file(), 'Default file must live in uploads.' );
+		assert_same( WP_CONTENT_DIR . '/wp-rocket-nginx/default.conf', new_writer()->get_legacy_output_file(), 'Legacy path is only reported for the move notice.' );
 	}
 );
 
@@ -110,17 +120,17 @@ test_case(
 		assert_true( filesize( $writer->get_output_file() ) > 1000, 'Output file should be complete.' );
 		assert_true( is_int( $writer->get_last_generated() ), 'Generation time should be recorded.' );
 		assert_same( '', $writer->get_last_error(), 'Successful write should clear old errors.' );
-		assert_same( 'rocket_nginx_bridge_config_written', $GLOBALS['wp_actions'][0][0], 'Integrations should receive the write action.' );
+		assert_same( 'getpagespeed_cache_configuration_config_written', $GLOBALS['wp_actions'][0][0], 'Integrations should receive the write action.' );
 	}
 );
 
 test_case(
 	'plugin entrypoint exposes a scope-independent singleton',
 	function () {
-		require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'rocket-nginx-bridge.php';
-		$first  = RocketNginxBridge\rocket_nginx_bridge();
-		$second = RocketNginxBridge\rocket_nginx_bridge();
-		assert_true( $first instanceof RocketNginxBridge\Plugin, 'Entrypoint must return the plugin instance.' );
+		require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'getpagespeed-cache-configuration.php';
+		$first  = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration();
+		$second = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration();
+		assert_true( $first instanceof GetPageSpeedCacheConfiguration\Plugin, 'Entrypoint must return the plugin instance.' );
 		assert_true( $first === $second, 'Entrypoint must return the same instance on every call.' );
 	}
 );
@@ -133,18 +143,33 @@ test_case(
 			'wp_rocket_nginx_last_generated' => 123,
 			'wp_rocket_nginx_last_error'     => false,
 		);
-		RocketNginxBridge\rocket_nginx_bridge()->init();
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->init();
 		foreach ( array( 'settings' => array( 'debug' => true ), 'last_generated' => 123, 'last_error' => false ) as $suffix => $value ) {
-			assert_same( $value, get_option( 'rocket_nginx_bridge_' . $suffix ), 'Legacy value must be copied.' );
+			assert_same( $value, get_option( 'getpagespeed_cache_configuration_' . $suffix ), 'Legacy value must be copied.' );
 			assert_true( ! array_key_exists( 'wp_rocket_nginx_' . $suffix, $GLOBALS['wp_options'] ), 'Migrated old option must be deleted.' );
 		}
-		assert_same( true, get_option( 'rocket_nginx_bridge_options_migrated' ), 'Migration must be marked complete.' );
+		assert_same( true, get_option( 'getpagespeed_cache_configuration_options_migrated' ), 'Migration must be marked complete.' );
 		$after = $GLOBALS['wp_options'];
-		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->migrate_options();
 		assert_same( $after, $GLOBALS['wp_options'], 'Repeated migration must be idempotent.' );
 		$GLOBALS['wp_options']['wp_rocket_nginx_last_error'] = 'late legacy value';
-		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->migrate_options();
 		assert_same( 'late legacy value', get_option( 'wp_rocket_nginx_last_error' ), 'Completed migration must skip legacy options.' );
+	}
+);
+
+test_case(
+	'1.1.0 options migrate and win over 1.0.0 leftovers',
+	function () {
+		$GLOBALS['wp_options'] = array(
+			'rocket_nginx_bridge_settings' => array( 'debug' => true ),
+			'wp_rocket_nginx_settings'     => array( 'debug' => false ),
+			'wp_rocket_nginx_last_error'   => 'oldest',
+		);
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->migrate_options();
+		assert_same( array( 'debug' => true ), get_option( 'getpagespeed_cache_configuration_settings' ), 'The 1.1.0 value must win.' );
+		assert_same( 'oldest', get_option( 'getpagespeed_cache_configuration_last_error' ), 'A 1.0.0 value fills a gap.' );
+		assert_true( ! array_key_exists( 'rocket_nginx_bridge_settings', $GLOBALS['wp_options'] ), 'Migrated 1.1.0 option must be deleted.' );
 	}
 );
 
@@ -154,11 +179,11 @@ test_case(
 		$GLOBALS['wp_options'] = array();
 		foreach ( array( 'settings', 'last_generated', 'last_error' ) as $suffix ) {
 			$GLOBALS['wp_options'][ 'wp_rocket_nginx_' . $suffix ] = 'old';
-			$GLOBALS['wp_options'][ 'rocket_nginx_bridge_' . $suffix ] = false;
+			$GLOBALS['wp_options'][ 'getpagespeed_cache_configuration_' . $suffix ] = false;
 		}
-		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->migrate_options();
 		foreach ( array( 'settings', 'last_generated', 'last_error' ) as $suffix ) {
-			assert_same( false, get_option( 'rocket_nginx_bridge_' . $suffix ), 'Existing new value must remain untouched, including false.' );
+			assert_same( false, get_option( 'getpagespeed_cache_configuration_' . $suffix ), 'Existing new value must remain untouched, including false.' );
 			assert_same( 'old', get_option( 'wp_rocket_nginx_' . $suffix ), 'Unmigrated old value must remain untouched.' );
 		}
 	}
@@ -168,8 +193,8 @@ test_case(
 	'migration with neither option present creates no data options',
 	function () {
 		$GLOBALS['wp_options'] = array();
-		RocketNginxBridge\rocket_nginx_bridge()->migrate_options();
-		assert_same( array( 'rocket_nginx_bridge_options_migrated' => true ), $GLOBALS['wp_options'], 'Only the one-time guard may be created.' );
+		GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->migrate_options();
+		assert_same( array( 'getpagespeed_cache_configuration_options_migrated' => true ), $GLOBALS['wp_options'], 'Only the one-time guard may be created.' );
 	}
 );
 

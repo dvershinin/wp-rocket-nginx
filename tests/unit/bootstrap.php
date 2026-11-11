@@ -3,14 +3,14 @@
  * Minimal WordPress compatibility layer for fast hermetic unit tests.
  */
 
-$test_root = sys_get_temp_dir() . '/rocket-nginx-bridge-unit-' . getmypid();
+$test_root = sys_get_temp_dir() . '/getpagespeed-cache-configuration-unit-' . getmypid();
 if ( ! is_dir( $test_root ) ) {
 	mkdir( $test_root, 0777, true );
 }
 
 define( 'ABSPATH', $test_root . '/wordpress/' );
 define( 'WP_CONTENT_DIR', $test_root . '/wordpress/wp-content' );
-define( 'ROCKET_NGINX_BRIDGE_PLUGIN_DIR', dirname( __DIR__, 2 ) . '/' );
+define( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR', dirname( __DIR__, 2 ) . '/' );
 
 $GLOBALS['wp_options'] = array();
 $GLOBALS['wp_filters'] = array();
@@ -78,6 +78,10 @@ function sanitize_file_name( $value ) {
 	return trim( $value, '.-' );
 }
 
+function wp_upload_dir( $time = null, $create_dir = true ) {
+	return array( 'basedir' => WP_CONTENT_DIR . '/uploads' );
+}
+
 function wp_mkdir_p( $path ) {
 	return is_dir( $path ) || mkdir( $path, 0777, true );
 }
@@ -108,5 +112,5 @@ function add_filter( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	$GLOBALS['registered_filters'][ $tag ][] = $callback;
 }
 
-require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'includes/class-settings-reader.php';
-require_once ROCKET_NGINX_BRIDGE_PLUGIN_DIR . 'includes/class-config-writer.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-settings-reader.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-config-writer.php';

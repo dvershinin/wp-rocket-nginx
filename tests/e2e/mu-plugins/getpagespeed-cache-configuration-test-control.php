@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Rocket Nginx Bridge E2E Control
+ * Plugin Name: GetPageSpeed Cache Configuration E2E Control
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -11,7 +11,7 @@ add_action(
 	'rest_api_init',
 	function () {
 		register_rest_route(
-			'rocket-nginx-bridge-test/v1',
+			'getpagespeed-cache-configuration-test/v1',
 			'/health',
 			array(
 				'methods'             => 'GET',
@@ -23,7 +23,7 @@ add_action(
 		);
 
 		register_rest_route(
-			'rocket-nginx-bridge-test/v1',
+			'getpagespeed-cache-configuration-test/v1',
 			'/settings',
 			array(
 				'methods'             => 'POST',
@@ -31,7 +31,7 @@ add_action(
 				'callback'            => function ( WP_REST_Request $request ) {
 					$settings = $request->get_json_params();
 					update_option( 'wp_rocket_settings', is_array( $settings ) ? $settings : array() );
-					$result = RocketNginxBridge\rocket_nginx_bridge()->regenerate_config();
+					$result = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->regenerate_config();
 
 					if ( is_wp_error( $result ) ) {
 						return $result;
@@ -43,22 +43,22 @@ add_action(
 		);
 
 		register_rest_route(
-			'rocket-nginx-bridge-test/v1',
+			'getpagespeed-cache-configuration-test/v1',
 			'/cache',
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => 'rocket_nginx_bridge_test_create_cache',
+				'callback'            => 'getpagespeed_cache_configuration_test_create_cache',
 			)
 		);
 
 		register_rest_route(
-			'rocket-nginx-bridge-test/v1',
+			'getpagespeed-cache-configuration-test/v1',
 			'/asset',
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => 'rocket_nginx_bridge_test_create_asset',
+				'callback'            => 'getpagespeed_cache_configuration_test_create_asset',
 			)
 		);
 	}
@@ -70,7 +70,7 @@ add_action(
  * @param WP_REST_Request $request Request.
  * @return array|WP_Error
  */
-function rocket_nginx_bridge_test_create_cache( WP_REST_Request $request ) {
+function getpagespeed_cache_configuration_test_create_cache( WP_REST_Request $request ) {
 	$data    = $request->get_json_params();
 	$path    = isset( $data['path'] ) ? (string) $data['path'] : '/';
 	$args    = isset( $data['args'] ) ? (string) $data['args'] : '';
@@ -119,7 +119,7 @@ function rocket_nginx_bridge_test_create_cache( WP_REST_Request $request ) {
  * @param WP_REST_Request $request Request.
  * @return array|WP_Error
  */
-function rocket_nginx_bridge_test_create_asset( WP_REST_Request $request ) {
+function getpagespeed_cache_configuration_test_create_asset( WP_REST_Request $request ) {
 	$data    = $request->get_json_params();
 	$path    = isset( $data['path'] ) ? (string) $data['path'] : '';
 	$content = isset( $data['content'] ) ? (string) $data['content'] : '';

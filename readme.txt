@@ -1,30 +1,34 @@
-=== Rocket Nginx Bridge ===
+=== GetPageSpeed Cache Configuration ===
 Contributors: dvershinin
 Tags: cache, nginx, performance, page cache, wp rocket
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: MIT
 License URI: https://opensource.org/license/mit
 
-Generates a Rocket-Nginx configuration from WP Rocket settings so Nginx can serve cached pages without PHP.
+Generates Nginx configuration from page-cache plugin settings so Nginx can serve cached pages without PHP.
 
 == Description ==
 
-Rocket Nginx Bridge is an unofficial integration for Nginx servers running WP Rocket.
-It generates the Nginx configuration that locates WP Rocket cache files and serves
-them directly from disk.
+GetPageSpeed Cache Configuration generates the Nginx configuration that locates
+page-cache files on disk and serves them directly, without starting PHP.
 
-This plugin is not affiliated with or endorsed by WP Media or WP Rocket.
+The current release supports WP Rocket: it mirrors the WP Rocket settings that
+decide how cache files are named and when a request must bypass the cache. WP
+Rocket is still required to create and purge the page cache.
 
-WP Rocket is still required to create and purge the page cache. This plugin only
-generates the matching Nginx configuration.
+The Nginx template is derived from the MIT-licensed Rocket-Nginx project by
+Maxime Jobin and SatelliteWP.
+
+This plugin is made by GetPageSpeed. It is not affiliated with or endorsed by
+WP Media (WP Rocket), SatelliteWP (Rocket-Nginx), or F5 (NGINX).
 
 == Installation ==
 
 1. Upload and activate the plugin.
-2. Open Settings > Rocket Nginx Bridge.
+2. Open Settings > GetPageSpeed Cache Configuration.
 3. Include the displayed `default.conf` path in the site's Nginx server block.
 4. Run `nginx -t` and reload Nginx.
 
@@ -41,15 +45,21 @@ No. Reloading the web server is deliberately left to the server operator.
 
 = Where is the configuration written? =
 
-By default it is written to `wp-content/wp-rocket-nginx/default.conf`.
+To the uploads directory: `wp-content/uploads/getpagespeed-cache-configuration/default.conf`.
+The generated configuration denies HTTP access to that file.
 
 == Changelog ==
 
+= 1.2.0 =
+
+* Rename to GetPageSpeed Cache Configuration.
+* Write the configuration to the uploads directory. Update the Nginx include line once after upgrading.
+* Rename options and hooks to the getpagespeed_cache_configuration_ prefix and migrate existing options automatically.
+
 = 1.1.0 =
 
-* Rename WP Rocket Nginx to Rocket Nginx Bridge for wordpress.org.
-* Rename options and hooks to the rocket_nginx_bridge_ prefix and migrate existing options automatically.
-* Keep the nginx include path unchanged and remove Update URI.
+* Rename options and hooks and migrate existing options automatically.
+* Remove Update URI.
 
 = 1.0.0 =
 
@@ -60,6 +70,6 @@ By default it is written to `wp-content/wp-rocket-nginx/default.conf`.
 
 == Upgrade Notice ==
 
-= 1.1.0 =
+= 1.2.0 =
 
-WP Rocket Nginx is now Rocket Nginx Bridge. Options migrate automatically; the nginx include path is unchanged. Update integrations to the rocket_nginx_bridge_ hook names.
+The configuration file moved to the uploads directory. Update the Nginx include line shown under Settings > GetPageSpeed Cache Configuration, then reload Nginx.
