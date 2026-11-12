@@ -4,7 +4,7 @@ Tags: cache, nginx, performance, page cache, wp rocket
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: MIT
 License URI: https://opensource.org/license/mit
 
@@ -49,6 +49,11 @@ To the uploads directory: `wp-content/uploads/getpagespeed-cache-configuration/d
 The generated configuration denies HTTP access to that file.
 
 == Changelog ==
+
+= 1.2.1 =
+
+* Render the Nginx configuration from a plain placeholder template instead of a PHP template.
+* Derive the public content folder from the content URL.
 
 = 1.2.0 =
 

@@ -171,7 +171,8 @@ final class Settings_Reader {
 	 * @return string
 	 */
 	public function get_wp_content_folder() {
-		$folder = sanitize_file_name( basename( wp_normalize_path( WP_CONTENT_DIR ) ) );
+		$path   = (string) wp_parse_url( content_url(), PHP_URL_PATH );
+		$folder = sanitize_file_name( basename( untrailingslashit( $path ) ) );
 		$folder = (string) apply_filters( 'getpagespeed_cache_configuration_wp_content_folder', $folder );
 		return '' !== sanitize_file_name( $folder ) ? sanitize_file_name( $folder ) : 'wp-content';
 	}
@@ -201,7 +202,9 @@ final class Settings_Reader {
 	 * @return string
 	 */
 	public function get_legacy_output_path() {
-		return trailingslashit( wp_normalize_path( WP_CONTENT_DIR ) ) . 'wp-rocket-nginx/';
+		// The pre-1.2.0 directory sat beside uploads in the content directory.
+		$uploads = wp_upload_dir( null, false );
+		return trailingslashit( dirname( wp_normalize_path( $uploads['basedir'] ) ) ) . 'wp-rocket-nginx/';
 	}
 
 	/**

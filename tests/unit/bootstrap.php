@@ -69,6 +69,18 @@ function trailingslashit( $value ) {
 	return rtrim( $value, '/\\' ) . '/';
 }
 
+function untrailingslashit( $value ) {
+	return rtrim( $value, '/\\' );
+}
+
+function content_url() {
+	return isset( $GLOBALS['content_url'] ) ? $GLOBALS['content_url'] : 'https://example.com/wp-content';
+}
+
+function wp_parse_url( $url, $component = -1 ) {
+	return parse_url( $url, $component );
+}
+
 function wp_normalize_path( $value ) {
 	return str_replace( '\\', '/', $value );
 }

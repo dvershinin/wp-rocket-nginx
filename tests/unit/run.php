@@ -101,6 +101,31 @@ test_case(
 );
 
 test_case(
+	'template placeholders are all filled and no PHP is rendered',
+	function () {
+		$config = new_writer()->generate();
+		assert_true( ! is_wp_error( $config ), 'Generation should succeed.' );
+		assert_same( 0, preg_match( '/\{\{\w+\}\}/', $config ), 'Every template placeholder must be replaced.' );
+		assert_true( false === strpos( $config, '<?php' ), 'The template must not contain PHP.' );
+		assert_same( 1, preg_match( '/^set \$rocket_debug [01];$/m', $config ), 'Debug must render as a 0/1 flag.' );
+	}
+);
+
+test_case(
+	'content folder is derived from the content URL',
+	function () {
+		assert_same( 'wp-content', ( new Settings_Reader() )->get_wp_content_folder(), 'Default content folder.' );
+		$GLOBALS['content_url'] = 'https://example.com/blog/assets/';
+		try {
+			assert_same( 'assets', ( new Settings_Reader() )->get_wp_content_folder(), 'A renamed content URL must be honored.' );
+			assert_true( false !== strpos( new_writer()->generate(), 'location ~ /assets/cache/wp-rocket/.*html$' ), 'Cache locations must use the content URL folder.' );
+		} finally {
+			unset( $GLOBALS['content_url'] );
+		}
+	}
+);
+
+test_case(
 	'configuration is written under the uploads directory',
 	function () {
 		$reader = new Settings_Reader();

@@ -3,7 +3,7 @@
  * Plugin Name: GetPageSpeed Cache Configuration
  * Plugin URI: https://github.com/dvershinin/getpagespeed-cache-configuration
  * Description: Generates Nginx configuration from page-cache plugin settings so Nginx can serve cached pages without PHP. Supports WP Rocket.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Danila Vershinin
  * Author URI: https://www.getpagespeed.com/
  * Requires at least: 6.0
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION' ) ) {
-	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.2.0' );
+	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.2.1' );
 }
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE' ) ) {
 	define( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE', __FILE__ );

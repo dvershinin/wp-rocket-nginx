@@ -43,7 +43,7 @@ final class Config_Writer {
 	 */
 	public function __construct( Settings_Reader $settings_reader ) {
 		$this->settings_reader = $settings_reader;
-		$this->template_file   = GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'templates/rocket-nginx.php';
+		$this->template_file   = GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'templates/rocket-nginx.conf';
 	}
 
 	/**
@@ -113,32 +113,40 @@ final class Config_Writer {
 			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
 		}
 
-		$debug               = $this->settings_reader->is_debug_enabled() ? 1 : 0;
-		$wp_content_uri      = $this->settings_reader->get_wp_content_folder();
-		$html_cache_control  = $this->settings_reader->get_html_cache_control();
-		$cookie_invalidate   = implode( '|', $this->settings_reader->get_cache_reject_cookies() );
-		$query_string_ignore = $this->generate_query_strings_ignore();
-		$query_string_cache  = $this->generate_query_strings_cache();
-		$css_expiration      = $this->settings_reader->get_css_expiration();
-		$js_expiration       = $this->settings_reader->get_js_expiration();
-		$media_expiration    = $this->settings_reader->get_media_expiration();
-		$media_extensions    = $this->settings_reader->get_media_extensions();
-		$mobile_user_agent   = $this->settings_reader->get_mobile_user_agent();
+		// The template is a plain Nginx file read from the plugin directory, never output to a browser.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$template = file_get_contents( $this->template_file );
+		if ( false === $template ) {
+			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
+		}
 
 		$config_name = $this->settings_reader->get_config_name();
 		$output_path = $this->settings_reader->get_output_path();
 
-		$include_start      = $this->generate_include( $output_path, $config_name, 'start' );
-		$include_preprocess = $this->generate_include( $output_path, $config_name, 'preprocess' );
-		$include_global     = $this->generate_include( $output_path, $config_name, 'global' );
-		$include_http       = $this->generate_include( $output_path, $config_name, 'http' );
-		$include_css        = $this->generate_include( $output_path, $config_name, 'css' );
-		$include_js         = $this->generate_include( $output_path, $config_name, 'js' );
-		$include_media      = $this->generate_include( $output_path, $config_name, 'media' );
+		$values = array(
+			'debug'               => $this->settings_reader->is_debug_enabled() ? '1' : '0',
+			'wp_content_uri'      => $this->settings_reader->get_wp_content_folder(),
+			'html_cache_control'  => $this->settings_reader->get_html_cache_control(),
+			'cookie_invalidate'   => implode( '|', $this->settings_reader->get_cache_reject_cookies() ),
+			'query_string_ignore' => $this->generate_query_strings_ignore(),
+			'query_string_cache'  => $this->generate_query_strings_cache(),
+			'css_expiration'      => $this->settings_reader->get_css_expiration(),
+			'js_expiration'       => $this->settings_reader->get_js_expiration(),
+			'media_expiration'    => $this->settings_reader->get_media_expiration(),
+			'media_extensions'    => $this->settings_reader->get_media_extensions(),
+			'mobile_user_agent'   => $this->settings_reader->get_mobile_user_agent(),
+		);
 
-		ob_start();
-		include $this->template_file;
-		return (string) ob_get_clean();
+		foreach ( array( 'start', 'preprocess', 'global', 'http', 'css', 'js', 'media' ) as $section ) {
+			$values[ 'include_' . $section ] = $this->generate_include( $output_path, $config_name, $section );
+		}
+
+		$replacements = array();
+		foreach ( $values as $name => $value ) {
+			$replacements[ '{{' . $name . '}}' ] = (string) $value;
+		}
+
+		return strtr( $template, $replacements );
 	}
 
 	/**

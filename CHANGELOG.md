@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 - 2026-11-12
+
+- Render the Nginx configuration from a plain `templates/rocket-nginx.conf` with `{{placeholders}}` instead of a PHP template that echoed values (wordpress.org review).
+- Derive the public content folder from `content_url()` rather than `WP_CONTENT_DIR`; the read-only legacy-path check now uses the uploads directory's parent.
+
 ## 1.2.0 - 2026-11-11
 
 - Rename Rocket Nginx Bridge to GetPageSpeed Cache Configuration (slug `getpagespeed-cache-configuration`) following wordpress.org review.
