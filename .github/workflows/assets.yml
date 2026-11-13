@@ -1,0 +1,28 @@
+name: Plugin asset/readme update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'readme.txt'
+      - '.wordpress-org/**'
+  workflow_dispatch:
+
+concurrency:
+  group: wordpress-svn-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  trunk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: WordPress.org plugin asset/readme update
+        uses: 10up/action-wordpress-plugin-asset-update@stable
+        env:
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          IGNORE_OTHER_FILES: true

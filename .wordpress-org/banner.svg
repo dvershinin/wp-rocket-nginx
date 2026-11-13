@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1544 500" width="1544" height="500">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1722"/>
+      <stop offset="60%" stop-color="#0F2A3D"/>
+      <stop offset="100%" stop-color="#103B36"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#16384F"/>
+      <stop offset="100%" stop-color="#0D2130"/>
+    </linearGradient>
+    <linearGradient id="brace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="100%" stop-color="#16A34A"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1544" height="500" fill="url(#bg)"/>
+
+  <!-- Faint configuration listing on the right -->
+  <g font-family="Menlo, Monaco, 'Courier New', monospace" font-size="22" fill="#4ADE80" opacity="0.16" xml:space="preserve">
+    <text x="1120" y="130">location / {</text>
+    <text x="1120" y="170">    try_files $cached_file</text>
+    <text x="1120" y="210">              $uri $uri/</text>
+    <text x="1120" y="250">              /index.php?$args;</text>
+    <text x="1120" y="290">}</text>
+    <text x="1120" y="350">add_header X-Cache HIT;</text>
+    <text x="1120" y="390">gzip_static on;</text>
+  </g>
+
+  <!-- Icon tile -->
+  <g transform="translate(96, 122)">
+    <rect width="256" height="256" rx="56" fill="url(#tile)" stroke="#1F4A63" stroke-width="2"/>
+    <g fill="none" stroke="url(#brace)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 88 56 Q 62 56 62 82 L 62 106 Q 62 128 40 128 Q 62 128 62 150 L 62 174 Q 62 200 88 200"/>
+      <path d="M 168 56 Q 194 56 194 82 L 194 106 Q 194 128 216 128 Q 194 128 194 150 L 194 174 Q 194 200 168 200"/>
+    </g>
+    <path d="M 142 58 L 98 136 L 124 136 L 112 198 L 160 118 L 132 118 Z" fill="url(#bolt)"/>
+  </g>
+
+  <g font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="412" y="196" font-size="30" font-weight="500" fill="#4ADE80" letter-spacing="3">GETPAGESPEED</text>
+    <text x="410" y="268" font-size="68" font-weight="700" fill="#F8FAFC" letter-spacing="-1">Cache Configuration</text>
+    <text x="412" y="322" font-size="27" font-weight="400" fill="#9FB3C8">Nginx serves your page cache. PHP stays asleep.</text>
+
+    <g font-size="17" font-weight="500" fill="#D1FAE5">
+      <g transform="translate(412, 356)">
+        <rect width="150" height="36" rx="18" fill="#16A34A" opacity="0.28"/>
+        <text x="75" y="24" text-anchor="middle">Nginx-native</text>
+      </g>
+      <g transform="translate(576, 356)">
+        <rect width="170" height="36" rx="18" fill="#16A34A" opacity="0.28"/>
+        <text x="85" y="24" text-anchor="middle">Settings-aware</text>
+      </g>
+      <g transform="translate(760, 356)">
+        <rect width="150" height="36" rx="18" fill="#16A34A" opacity="0.28"/>
+        <text x="75" y="24" text-anchor="middle">Atomic writes</text>
+      </g>
+    </g>
+  </g>
+</svg>

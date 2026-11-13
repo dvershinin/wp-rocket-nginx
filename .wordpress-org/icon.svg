@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F2A3D"/>
+      <stop offset="100%" stop-color="#0B1722"/>
+    </linearGradient>
+    <linearGradient id="brace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="100%" stop-color="#16A34A"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+
+  <!-- Configuration block braces -->
+  <g fill="none" stroke="url(#brace)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 88 56 Q 62 56 62 82 L 62 106 Q 62 128 40 128 Q 62 128 62 150 L 62 174 Q 62 200 88 200"/>
+    <path d="M 168 56 Q 194 56 194 82 L 194 106 Q 194 128 216 128 Q 194 128 194 150 L 194 174 Q 194 200 168 200"/>
+  </g>
+
+  <!-- Speed -->
+  <path d="M 142 58 L 98 136 L 124 136 L 112 198 L 160 118 L 132 118 Z" fill="url(#bolt)"/>
+</svg>

@@ -1,0 +1,15 @@
+# Keep the wordpress.org package identical to `make package` (PACKAGE_FILES).
+/.git
+/.github
+/.wordpress-org
+/.gitignore
+/.distignore
+/tests
+/docs
+/dist
+/Makefile
+/CHANGELOG.md
+/SECURITY.md
+/CLAUDE.md
+/AGENTS.md
+.DS_Store
