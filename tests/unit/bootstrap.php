@@ -124,5 +124,30 @@ function add_filter( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	$GLOBALS['registered_filters'][ $tag ][] = $callback;
 }
 
-require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-settings-reader.php';
-require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-config-writer.php';
+function home_url() {
+	return isset( $GLOBALS['home_url'] ) ? $GLOBALS['home_url'] : 'https://example.com';
+}
+
+function wp_json_encode( $value ) {
+	return json_encode( $value );
+}
+
+function has_filter( $tag ) {
+	return ! empty( $GLOBALS['wp_filters'][ $tag ] );
+}
+
+function wp_doing_ajax() {
+	return ! empty( $GLOBALS['doing_ajax'] );
+}
+
+function current_user_can( $capability ) {
+	return ! empty( $GLOBALS['current_user_caps'][ $capability ] );
+}
+
+function __( $text, $domain = 'default' ) {
+	return $text;
+}
+
+foreach ( array( 'class-nginx-syntax', 'class-settings-reader', 'interface-integration', 'integrations/class-wp-rocket', 'integrations/class-wp-super-cache', 'class-integrations', 'class-config-writer', 'class-include-checker', 'class-admin-page' ) as $file ) {
+	require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/' . $file . '.php';
+}

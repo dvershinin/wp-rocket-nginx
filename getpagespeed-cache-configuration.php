@@ -2,8 +2,8 @@
 /**
  * Plugin Name: GetPageSpeed Cache Configuration
  * Plugin URI: https://github.com/dvershinin/getpagespeed-cache-configuration
- * Description: Generates Nginx configuration from page-cache plugin settings so Nginx can serve cached pages without PHP. Supports WP Rocket.
- * Version: 1.2.1
+ * Description: Generates Nginx configuration from page-cache plugin settings so Nginx can serve cached pages without PHP. Supports WP Rocket and WP Super Cache.
+ * Version: 1.3.0
  * Author: Danila Vershinin
  * Author URI: https://www.getpagespeed.com/
  * Requires at least: 6.0
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION' ) ) {
-	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.2.1' );
+	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.3.0' );
 }
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE' ) ) {
 	define( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE', __FILE__ );
@@ -31,8 +31,14 @@ if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR' ) ) {
 	define( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 }
 
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-nginx-syntax.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-settings-reader.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/interface-integration.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/integrations/class-wp-rocket.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/integrations/class-wp-super-cache.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-integrations.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-config-writer.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-include-checker.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-admin-page.php';
 
 /**
@@ -78,9 +84,14 @@ final class Plugin {
 	public function init() {
 		$this->migrate_options();
 
-		add_action( 'update_option_wp_rocket_settings', array( $this, 'regenerate_config' ), 10, 2 );
-		add_action( 'rocket_after_save_options', array( $this, 'regenerate_config' ) );
-		add_action( 'update_option_getpagespeed_cache_configuration_settings', array( $this, 'regenerate_config' ) );
+		foreach ( $this->config_writer->get_integrations()->all() as $integration ) {
+			foreach ( $integration->get_regenerate_hooks() as $hook ) {
+				add_action( $hook, array( $this, 'regenerate_config' ), 10, 0 );
+			}
+		}
+		add_action( 'update_option_getpagespeed_cache_configuration_settings', array( $this, 'regenerate_config' ), 10, 0 );
+		// Catches a newly activated cache plugin and settings stored in files, which fire no hook.
+		add_action( 'admin_init', array( $this, 'maybe_regenerate_config' ) );
 
 		$this->admin_page->init();
 
@@ -127,6 +138,22 @@ final class Plugin {
 	 */
 	public function regenerate_config() {
 		return $this->config_writer->write();
+	}
+
+	/**
+	 * Regenerate when the cache plugin or its settings changed since the last write.
+	 *
+	 * admin_init also fires for anonymous admin-ajax.php and admin-post.php
+	 * requests, which must not be able to trigger a file write.
+	 *
+	 * @return bool Whether a regeneration was attempted.
+	 */
+	public function maybe_regenerate_config() {
+		if ( wp_doing_ajax() || ! current_user_can( 'manage_options' ) ) {
+			return false;
+		}
+
+		return $this->config_writer->maybe_regenerate();
 	}
 
 	/**

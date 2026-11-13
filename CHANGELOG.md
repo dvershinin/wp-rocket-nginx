@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 - 2026-11-13
+
+- Add WP Super Cache as a second integration. The generated configuration applies the same conditions as the mod_rewrite rules WP Super Cache writes for Apache: HTTPS and gzip variants, cookie, query-string, trailing-slash and mobile bypasses, read from `wp-cache-config.php`.
+- Pick the integration from the active cache plugin. WP Rocket remains the default when no supported plugin is detected, so existing sites keep the same output path, options and `include` line. The filter `getpagespeed_cache_configuration_integration` forces one.
+- Add a "Check Nginx include" button. The generated file defines a probe location that returns a token of its own content, so the check tells apart "loaded", "included but Nginx not reloaded since the last change" and "not included".
+- Regenerate on the next admin request when the active cache plugin changes or WP Super Cache rewrites its configuration file.
+- Drop cookie and user-agent patterns that are not complete regular expressions (unbalanced parentheses, trailing backslash) instead of writing a file Nginx would refuse to load.
+- Move cache-plugin specifics behind an `Integration` interface (`includes/integrations/`); shared static-asset and protection rules live in `templates/partials/`.
+
 ## 1.2.1 - 2026-11-12
 
 - Render the Nginx configuration from a plain `templates/rocket-nginx.conf` with `{{placeholders}}` instead of a PHP template that echoed values (wordpress.org review).

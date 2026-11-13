@@ -7,9 +7,42 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// WP Super Cache's advanced-cache.php drop-in defines this before plugins load.
+if ( file_exists( WP_CONTENT_DIR . '/wp-cache-config.php' ) && ! defined( 'WPCACHEHOME' ) ) {
+	define( 'WPCACHEHOME', WP_CONTENT_DIR . '/plugins/wp-super-cache/' );
+}
+
 add_action(
 	'rest_api_init',
 	function () {
+		register_rest_route(
+			'getpagespeed-cache-configuration-test/v1',
+			'/wp-super-cache',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => 'getpagespeed_cache_configuration_test_configure_wp_super_cache',
+			)
+		);
+
+		register_rest_route(
+			'getpagespeed-cache-configuration-test/v1',
+			'/check',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => function () {
+					$writer  = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->get_config_writer();
+					$checker = new GetPageSpeedCacheConfiguration\Include_Checker( $writer );
+
+					return array(
+						'updated' => true,
+						'status'  => $checker->check(),
+					);
+				},
+			)
+		);
+
 		register_rest_route(
 			'getpagespeed-cache-configuration-test/v1',
 			'/health',
@@ -65,7 +98,47 @@ add_action(
 );
 
 /**
- * Create one deterministic WP Rocket-style cache file.
+ * Write wp-cache-config.php in WP Super Cache's documented format and regenerate.
+ *
+ * @param WP_REST_Request $request Request.
+ * @return array|WP_Error
+ */
+function getpagespeed_cache_configuration_test_configure_wp_super_cache( WP_REST_Request $request ) {
+	$data   = $request->get_json_params();
+	$config = "<?php\n\$cache_enabled = true;\n\$super_cache_enabled = true;\n\$cache_path = WP_CONTENT_DIR . '/cache/';\n";
+
+	foreach ( array( 'cache_compression', 'wp_cache_mobile_enabled', 'wp_cache_not_logged_in' ) as $name ) {
+		$config .= '$' . $name . ' = ' . ( empty( $data[ $name ] ) ? 0 : 1 ) . ";\n";
+	}
+	$config .= "\$wp_cache_mobile_browsers = 'Android, iPhone';\n\$wp_cache_mobile_prefixes = '';\n";
+
+	$file = WP_CONTENT_DIR . '/wp-cache-config.php';
+	if ( false === file_put_contents( $file, $config ) ) {
+		return new WP_Error( 'write_failed', 'Could not write wp-cache-config.php.', array( 'status' => 500 ) );
+	}
+	if ( function_exists( 'opcache_invalidate' ) ) {
+		opcache_invalidate( $file, true );
+	}
+	if ( ! defined( 'WPCACHEHOME' ) ) {
+		define( 'WPCACHEHOME', WP_CONTENT_DIR . '/plugins/wp-super-cache/' );
+	}
+
+	// A fresh plugin instance is not available mid-request, so use the admin_init change detection path.
+	$writer = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->get_config_writer();
+	$writer->maybe_regenerate();
+
+	if ( '' !== $writer->get_last_error() ) {
+		return new WP_Error( 'generate_failed', $writer->get_last_error(), array( 'status' => 500 ) );
+	}
+
+	return array(
+		'updated' => true,
+		'token'   => $writer->get_installed_probe_token(),
+	);
+}
+
+/**
+ * Create one deterministic WP Rocket-style or WP Super Cache-style cache file.
  *
  * @param WP_REST_Request $request Request.
  * @return array|WP_Error
@@ -80,7 +153,26 @@ function getpagespeed_cache_configuration_test_create_cache( WP_REST_Request $re
 		return new WP_Error( 'invalid_path', 'Invalid cache path.', array( 'status' => 400 ) );
 	}
 
-	$host      = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+	$host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+
+	if ( isset( $data['layout'] ) && 'supercache' === $data['layout'] ) {
+		// supercache/<host><path>/index[-https].html, with an optional .gz sibling.
+		$directory = WP_CONTENT_DIR . '/cache/supercache/' . $host . trailingslashit( $path );
+		$filename  = $directory . ( empty( $data['https'] ) ? 'index.html' : 'index-https.html' );
+		$written   = wp_mkdir_p( $directory ) && false !== file_put_contents( $filename, $content );
+
+		if ( $written && isset( $data['gzip_content'] ) ) {
+			$written = false !== file_put_contents( $filename . '.gz', gzencode( (string) $data['gzip_content'] ) );
+		}
+
+		return $written
+			? array(
+				'created' => true,
+				'file'    => $filename,
+			)
+			: new WP_Error( 'write_failed', 'Could not create cache file.', array( 'status' => 500 ) );
+	}
+
 	$directory = WP_CONTENT_DIR . '/cache/wp-rocket/' . $host . trailingslashit( $path );
 	if ( '' !== $args ) {
 		$directory .= '#' . $args . '/';

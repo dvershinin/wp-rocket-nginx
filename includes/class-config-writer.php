@@ -22,6 +22,12 @@ final class Config_Writer {
 	/** Last generation error option. */
 	const LAST_ERROR_OPTION = 'getpagespeed_cache_configuration_last_error';
 
+	/** Change token of the settings the installed file was generated from. */
+	const SOURCE_TOKEN_OPTION = 'getpagespeed_cache_configuration_source_token';
+
+	/** Shared template fragments, substituted before placeholder values. */
+	const PARTIALS = array( 'protect', 'static-assets' );
+
 	/**
 	 * Settings reader.
 	 *
@@ -30,20 +36,21 @@ final class Config_Writer {
 	private $settings_reader;
 
 	/**
-	 * Template path.
+	 * Supported cache plugins.
 	 *
-	 * @var string
+	 * @var Integrations
 	 */
-	private $template_file;
+	private $integrations;
 
 	/**
 	 * Build a writer.
 	 *
-	 * @param Settings_Reader $settings_reader Settings reader.
+	 * @param Settings_Reader   $settings_reader Settings reader.
+	 * @param Integrations|null $integrations    Supported cache plugins.
 	 */
-	public function __construct( Settings_Reader $settings_reader ) {
+	public function __construct( Settings_Reader $settings_reader, $integrations = null ) {
 		$this->settings_reader = $settings_reader;
-		$this->template_file   = GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'templates/rocket-nginx.conf';
+		$this->integrations    = $integrations instanceof Integrations ? $integrations : new Integrations( $settings_reader );
 	}
 
 	/**
@@ -85,6 +92,7 @@ final class Config_Writer {
 
 		$generated_at = time();
 		update_option( self::LAST_GENERATED_OPTION, $generated_at, false );
+		update_option( self::SOURCE_TOKEN_OPTION, $this->integrations->get_change_token(), false );
 		delete_option( self::LAST_ERROR_OPTION );
 
 		/**
@@ -105,92 +113,69 @@ final class Config_Writer {
 	 * @return string|\WP_Error Configuration or an error object.
 	 */
 	public function generate() {
-		if ( ! file_exists( $this->template_file ) ) {
-			return $this->error( 'template_not_found', 'The Nginx configuration template was not found.' );
+		$integration = $this->integrations->get_active();
+		$template    = $this->read_template( $integration->get_template_file() );
+		if ( is_wp_error( $template ) ) {
+			return $template;
 		}
 
-		if ( ! is_readable( $this->template_file ) ) {
-			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
-		}
-
-		// The template is a plain Nginx file read from the plugin directory, never output to a browser.
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$template = file_get_contents( $this->template_file );
-		if ( false === $template ) {
-			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
+		foreach ( self::PARTIALS as $partial ) {
+			$content = $this->read_template( GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'templates/partials/' . $partial . '.conf' );
+			if ( is_wp_error( $content ) ) {
+				return $content;
+			}
+			$template = str_replace( '{{partial_' . str_replace( '-', '_', $partial ) . '}}', rtrim( $content ), $template );
 		}
 
 		$config_name = $this->settings_reader->get_config_name();
 		$output_path = $this->settings_reader->get_output_path();
 
 		$values = array(
-			'debug'               => $this->settings_reader->is_debug_enabled() ? '1' : '0',
-			'wp_content_uri'      => $this->settings_reader->get_wp_content_folder(),
-			'html_cache_control'  => $this->settings_reader->get_html_cache_control(),
-			'cookie_invalidate'   => implode( '|', $this->settings_reader->get_cache_reject_cookies() ),
-			'query_string_ignore' => $this->generate_query_strings_ignore(),
-			'query_string_cache'  => $this->generate_query_strings_cache(),
-			'css_expiration'      => $this->settings_reader->get_css_expiration(),
-			'js_expiration'       => $this->settings_reader->get_js_expiration(),
-			'media_expiration'    => $this->settings_reader->get_media_expiration(),
-			'media_extensions'    => $this->settings_reader->get_media_extensions(),
-			'mobile_user_agent'   => $this->settings_reader->get_mobile_user_agent(),
+			'debug'            => $this->settings_reader->is_debug_enabled() ? '1' : '0',
+			'integration_id'   => $integration->get_id(),
+			'wp_content_uri'   => $this->settings_reader->get_wp_content_folder(),
+			'css_expiration'   => $this->settings_reader->get_css_expiration(),
+			'js_expiration'    => $this->settings_reader->get_js_expiration(),
+			'media_expiration' => $this->settings_reader->get_media_expiration(),
+			'media_extensions' => $this->settings_reader->get_media_extensions(),
 		);
 
 		foreach ( array( 'start', 'preprocess', 'global', 'http', 'css', 'js', 'media' ) as $section ) {
 			$values[ 'include_' . $section ] = $this->generate_include( $output_path, $config_name, $section );
 		}
 
+		$values = array_merge( $integration->get_template_values(), $values );
+
 		$replacements = array();
 		foreach ( $values as $name => $value ) {
 			$replacements[ '{{' . $name . '}}' ] = (string) $value;
 		}
 
-		return strtr( $template, $replacements );
+		$config = strtr( $template, $replacements );
+
+		// Identifies this exact content, so the probe location can tell a reloaded Nginx from a stale one.
+		return str_replace( '{{fingerprint}}', substr( md5( $config ), 0, 12 ), $config );
 	}
 
 	/**
-	 * Generate statements that remove non-content-changing query parameters.
+	 * Read a template or partial shipped with the plugin.
 	 *
-	 * @return string
+	 * @param string $file Absolute path.
+	 * @return string|\WP_Error Contents or an error object.
 	 */
-	private function generate_query_strings_ignore() {
-		$result = "set \$rocket_args \$args;\n";
-
-		foreach ( $this->settings_reader->get_query_strings_ignore() as $parameter ) {
-			$result .= 'if ($rocket_args ~ (.*)(?:&|^)' . preg_quote( $parameter, '/' ) . '=[^&]*(.*)) { ';
-			$result .= 'set $rocket_args $1$2; }' . "\n";
+	private function read_template( $file ) {
+		if ( ! file_exists( $file ) ) {
+			return $this->error( 'template_not_found', 'The Nginx configuration template was not found.' );
 		}
 
-		$result .= "\n# Normalize separators left after removing tracking parameters.\n";
-		$result .= 'if ($rocket_args ~ ^&(.*)) { set $rocket_args $1; }' . "\n";
-		$result .= 'if ($rocket_args ~ (.*)&$) { set $rocket_args $1; }' . "\n";
-		$result .= 'if ($rocket_args ~ (.*)&&+(.*)) { set $rocket_args $1&$2; }';
-
-		return $result;
-	}
-
-	/**
-	 * Generate statements that map explicitly cached query strings to folders.
-	 *
-	 * @return string
-	 */
-	private function generate_query_strings_cache() {
-		$query_strings = $this->settings_reader->get_query_strings_cache();
-		$result        = "set \$rocket_has_query_cache \"\";\n";
-		$result       .= "set \$rocket_args_tmp \$rocket_args;\n";
-
-		foreach ( $query_strings as $parameter ) {
-			$result .= 'if ($rocket_args_tmp ~ (.*)(?:&|^)' . preg_quote( $parameter, '/' ) . '=[^&]*(.*)) { ';
-			$result .= 'set $rocket_has_query_cache 1; }' . "\n";
+		// The template is a plain Nginx file read from the plugin directory, never output to a browser.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$template = is_readable( $file ) ? file_get_contents( $file ) : false;
+		if ( false === $template ) {
+			return $this->error( 'template_not_readable', 'The Nginx configuration template is not readable.' );
 		}
 
-		$result .= "\nif (\$rocket_has_query_cache = 1) {\n";
-		$result .= "\tset \$rocket_args \"#\$rocket_args\";\n";
-		$result .= "\tset \$rocket_is_args \"\";\n";
-		$result .= '}';
-
-		return $result;
+		return $template;
 	}
 
 	/**
@@ -222,6 +207,47 @@ final class Config_Writer {
 	 */
 	public function get_legacy_output_file() {
 		return $this->settings_reader->get_legacy_output_path() . $this->settings_reader->get_config_name() . '.conf';
+	}
+
+	/**
+	 * Return the probe token of the configuration file currently on disk.
+	 *
+	 * @return string Token, or an empty string when no generated file carries one.
+	 */
+	public function get_installed_probe_token() {
+		$file = $this->get_output_file();
+		// A local file this plugin wrote; WP_Filesystem is not loaded outside admin requests.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$config = is_readable( $file ) ? (string) file_get_contents( $file ) : '';
+
+		return preg_match( '/return 200 "(gpscc:[a-z0-9-]+:[a-f0-9]{12})";/', $config, $matches ) ? $matches[1] : '';
+	}
+
+	/**
+	 * Return the registry of supported cache plugins.
+	 *
+	 * @return Integrations
+	 */
+	public function get_integrations() {
+		return $this->integrations;
+	}
+
+	/**
+	 * Regenerate when the active cache plugin or its file-based settings changed.
+	 *
+	 * @return bool Whether a regeneration was attempted.
+	 */
+	public function maybe_regenerate() {
+		$token = $this->integrations->get_change_token();
+		if ( get_option( self::SOURCE_TOKEN_OPTION, null ) === $token ) {
+			return false;
+		}
+
+		// Recorded first so a destination that cannot be written is not retried on every request.
+		update_option( self::SOURCE_TOKEN_OPTION, $token, false );
+		$this->write();
+
+		return true;
 	}
 
 	/** @return bool */

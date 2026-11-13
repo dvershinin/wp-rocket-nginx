@@ -21,6 +21,11 @@ trap cleanup EXIT INT TERM
 
 fail() {
     echo "FAIL: $1" >&2
+    # Show the last exchange: without it a CI failure cannot be diagnosed.
+    echo '--- last response headers ---' >&2
+    cat "$headers_file" >&2 || true
+    echo '--- last response body (first 20 lines) ---' >&2
+    head -n 20 "$body_file" >&2 || true
     exit 1
 }
 
@@ -50,6 +55,23 @@ assert_header() {
     name=$1
     value=$2
     grep -Eiq "^${name}: ${value}([[:space:]]|$)" "$headers_file" || fail "Expected ${name}: ${value}"
+}
+
+# The Nginx container reloads when the generated file changes. Wait until the
+# probe answers with the token the test API just reported for the file on disk.
+wait_for_reload() {
+    token=$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$body_file")
+    [ -n "$token" ] || fail 'Test API did not report the generated probe token'
+    attempt=0
+    while [ "$attempt" -lt 20 ]; do
+        request "${base_url}/getpagespeed-cache-configuration-probe"
+        if grep -Fxq "$token" "$body_file"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    fail "Nginx did not load the regenerated configuration (${token})"
 }
 
 assert_body() {
@@ -109,4 +131,80 @@ request "${base_url}/wp-content/uploads/getpagespeed-cache-configuration/default
 grep -Eq '^HTTP/[0-9.]+ 403' "$headers_file" || fail 'Generated configuration must return HTTP 403.'
 echo 'PASS generated configuration is not web-accessible'
 
-echo '7 E2E tests, 0 failures'
+post_json check '{}'
+grep -Fq '"status":"active"' "$body_file" || fail "Include check must report active, got: $(cat "$body_file")"
+echo 'PASS include check confirms Nginx loaded the WP Rocket configuration'
+
+# Switch to WP Super Cache: its settings live in wp-cache-config.php, not in an option.
+post_json wp-super-cache '{"cache_compression":0}'
+wait_for_reload
+post_json cache '{"layout":"supercache","path":"/wpsc-page/","content":"WPSC_PLAIN_MARKER"}'
+request "${base_url}/wpsc-page/"
+assert_header X-GetPageSpeed-Cache HIT
+assert_header Cache-Control 'max-age=3, must-revalidate'
+assert_header Content-Type 'text/html; charset=UTF-8'
+assert_body WPSC_PLAIN_MARKER
+grep -Fq 'supercache/nginx/wpsc-page/index.html' "$headers_file" || fail 'Expected the supercache filename in the diagnostic header.'
+echo 'PASS WP Super Cache hit'
+
+post_json cache '{"layout":"supercache","path":"/wpsc-page/","content":"WPSC_HTTPS_MARKER","https":true}'
+request --header 'X-Forwarded-Proto: https' "${base_url}/wpsc-page/"
+assert_header X-GetPageSpeed-Cache HIT
+assert_body WPSC_HTTPS_MARKER
+echo 'PASS WP Super Cache serves the HTTPS variant'
+
+request --header 'Cookie: wordpress_logged_in_test=1' "${base_url}/wpsc-page/"
+assert_header X-GetPageSpeed-Cache BYPASS
+request --header 'Cookie: comment_author_abc=me' "${base_url}/wpsc-page/"
+assert_header X-GetPageSpeed-Cache BYPASS
+echo 'PASS WP Super Cache cookies bypass cache'
+
+request "${base_url}/wpsc-page/?unknown=1"
+assert_header X-GetPageSpeed-Cache BYPASS
+request --request POST "${base_url}/wpsc-page/"
+assert_header X-GetPageSpeed-Cache BYPASS
+echo 'PASS WP Super Cache query strings and POST bypass cache'
+
+request "${base_url}/wpsc-page"
+assert_header X-GetPageSpeed-Cache BYPASS
+request --path-as-is "${base_url}/wpsc-page/x/../"
+assert_header X-GetPageSpeed-Cache BYPASS
+echo 'PASS WP Super Cache missing trailing slash and dot segments reach PHP'
+
+request "${base_url}/wp-content/cache/supercache/nginx/wpsc-page/index.html"
+grep -Eq '^HTTP/[0-9.]+ 404' "$headers_file" || fail 'Cache files must not be directly requestable.'
+echo 'PASS WP Super Cache files are internal'
+
+request "${base_url}/missing-page/"
+assert_header X-GetPageSpeed-Cache MISS
+echo 'PASS WP Super Cache miss reaches PHP'
+
+post_json wp-super-cache '{"cache_compression":1,"wp_cache_mobile_enabled":1}'
+wait_for_reload
+post_json cache '{"layout":"supercache","path":"/wpsc-gzip/","content":"WPSC_PLAIN_MARKER","gzip_content":"WPSC_GZIP_MARKER"}'
+request --compressed "${base_url}/wpsc-gzip/"
+assert_header X-GetPageSpeed-Cache HIT
+assert_header Content-Encoding gzip
+assert_header Content-Type 'text/html; charset=UTF-8'
+assert_body WPSC_GZIP_MARKER
+# Explicit header: some curl builds advertise gzip by default.
+request --header 'Accept-Encoding: identity' "${base_url}/wpsc-gzip/"
+assert_header X-GetPageSpeed-Cache HIT
+assert_body WPSC_PLAIN_MARKER
+grep -Eiq '^Content-Encoding:' "$headers_file" && fail 'A client that does not accept gzip must receive the plain file.'
+echo 'PASS WP Super Cache serves the pre-compressed file only to gzip clients'
+
+request --header 'User-Agent: Mozilla/5.0 (iPhone; Mobile)' "${base_url}/wpsc-gzip/"
+assert_header X-GetPageSpeed-Cache BYPASS
+echo 'PASS WP Super Cache mobile support sends mobile browsers to PHP'
+
+post_json asset '{"path":"/uploads/e2e-wpsc.css","content":"body{color:#456}"}'
+request "${base_url}/wp-content/uploads/e2e-wpsc.css"
+assert_header Cache-Control 'max-age=7776000'
+echo 'PASS static assets keep their rules under WP Super Cache'
+
+post_json check '{}'
+grep -Fq '"status":"active"' "$body_file" || fail "Include check must report active, got: $(cat "$body_file")"
+echo 'PASS include check confirms Nginx loaded the WP Super Cache configuration'
+
+echo '19 E2E tests, 0 failures'

@@ -24,12 +24,21 @@ final class Admin_Page {
 	private $config_writer;
 
 	/**
+	 * Include checker.
+	 *
+	 * @var Include_Checker
+	 */
+	private $include_checker;
+
+	/**
 	 * Build the admin page.
 	 *
-	 * @param Config_Writer $config_writer Configuration writer.
+	 * @param Config_Writer        $config_writer   Configuration writer.
+	 * @param Include_Checker|null $include_checker Include checker.
 	 */
-	public function __construct( Config_Writer $config_writer ) {
-		$this->config_writer = $config_writer;
+	public function __construct( Config_Writer $config_writer, $include_checker = null ) {
+		$this->config_writer   = $config_writer;
+		$this->include_checker = $include_checker instanceof Include_Checker ? $include_checker : new Include_Checker( $config_writer );
 	}
 
 	/** @return void */
@@ -37,6 +46,7 @@ final class Admin_Page {
 		add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_post_getpagespeed_cache_configuration_regenerate', array( $this, 'handle_regenerate' ) );
+		add_action( 'admin_post_getpagespeed_cache_configuration_check', array( $this, 'handle_check' ) );
 		add_action( 'admin_notices', array( $this, 'admin_notices' ) );
 	}
 
@@ -86,6 +96,8 @@ final class Admin_Page {
 		$config_exists  = $this->config_writer->config_exists();
 		$output_file    = $this->config_writer->get_output_file();
 		$last_generated = $this->config_writer->get_last_generated();
+		$integrations   = $this->config_writer->get_integrations();
+		$integration    = $integrations->get_active();
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
@@ -95,6 +107,11 @@ final class Admin_Page {
 					<strong><?php esc_html_e( 'Generated configuration:', 'getpagespeed-cache-configuration' ); ?></strong>
 					<code><?php echo esc_html( $output_file ); ?></code>
 					<?php echo $config_exists ? esc_html__( '(ready)', 'getpagespeed-cache-configuration' ) : esc_html__( '(not generated)', 'getpagespeed-cache-configuration' ); ?>
+				</p>
+				<p>
+					<strong><?php esc_html_e( 'Cache plugin:', 'getpagespeed-cache-configuration' ); ?></strong>
+					<?php echo esc_html( $integration->get_label() ); ?>
+					<?php echo $integrations->get_detected() ? esc_html__( '(detected)', 'getpagespeed-cache-configuration' ) : esc_html__( '(not detected, used by default)', 'getpagespeed-cache-configuration' ); ?>
 				</p>
 				<?php if ( $last_generated ) : ?>
 					<p>
@@ -119,7 +136,15 @@ final class Admin_Page {
 						<td>
 							<label>
 								<input type="checkbox" name="<?php echo esc_attr( Settings_Reader::OPTION_NAME ); ?>[debug]" value="1" <?php checked( $debug ); ?>>
-								<?php esc_html_e( 'Expose X-Rocket-Nginx diagnostic headers', 'getpagespeed-cache-configuration' ); ?>
+								<?php
+								echo esc_html(
+									sprintf(
+										/* translators: %s is an HTTP response header name. */
+										__( 'Expose diagnostic response headers (%s and related)', 'getpagespeed-cache-configuration' ),
+										$integration->get_status_header()
+									)
+								);
+								?>
 							</label>
 						</td>
 					</tr>
@@ -137,7 +162,15 @@ final class Admin_Page {
 			<p><?php esc_html_e( 'Include the generated file in the server block, then test and reload Nginx:', 'getpagespeed-cache-configuration' ); ?></p>
 			<pre><code>include <?php echo esc_html( $output_file ); ?>;
 nginx -t &amp;&amp; systemctl reload nginx</code></pre>
-			<p><?php esc_html_e( 'The plugin regenerates the file when WP Rocket settings change. Reloading Nginx remains an explicit server operation.', 'getpagespeed-cache-configuration' ); ?></p>
+			<p><?php esc_html_e( 'The plugin regenerates the file when the cache plugin settings change. Reloading Nginx remains an explicit server operation.', 'getpagespeed-cache-configuration' ); ?></p>
+
+			<h2><?php esc_html_e( 'Check the include', 'getpagespeed-cache-configuration' ); ?></h2>
+			<p><?php esc_html_e( 'Requests a probe address on this site to confirm that Nginx loaded the generated file and was reloaded after the last change.', 'getpagespeed-cache-configuration' ); ?></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="getpagespeed_cache_configuration_check">
+				<?php wp_nonce_field( 'getpagespeed_cache_configuration_check', 'getpagespeed_cache_configuration_nonce' ); ?>
+				<?php submit_button( esc_html__( 'Check Nginx include', 'getpagespeed-cache-configuration' ), 'secondary', 'check', false ); ?>
+			</form>
 		</div>
 		<?php
 	}
@@ -152,16 +185,56 @@ nginx -t &amp;&amp; systemctl reload nginx</code></pre>
 		$result = $this->config_writer->write();
 		$status = is_wp_error( $result ) ? 'error' : 'success';
 
+		$this->redirect_to_page( 'getpagespeed_cache_configuration_status', $status );
+	}
+
+	/** @return void */
+	public function handle_check() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to check this configuration.', 'getpagespeed-cache-configuration' ) );
+		}
+
+		check_admin_referer( 'getpagespeed_cache_configuration_check', 'getpagespeed_cache_configuration_nonce' );
+
+		$this->redirect_to_page( 'getpagespeed_cache_configuration_check', $this->include_checker->check() );
+	}
+
+	/**
+	 * Return to the settings page with one display-only result flag.
+	 *
+	 * @param string $name  Query argument.
+	 * @param string $value Result.
+	 * @return void
+	 */
+	private function redirect_to_page( $name, $value ) {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'                   => 'getpagespeed-cache-configuration',
-					'getpagespeed_cache_configuration_status' => $status,
+					'page' => 'getpagespeed-cache-configuration',
+					$name  => $value,
 				),
 				admin_url( 'options-general.php' )
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Return the notice for an include-check result.
+	 *
+	 * @param string $status One of the Include_Checker::STATUS_* constants.
+	 * @return array|null Notice class and message, or null for an unknown status.
+	 */
+	public function get_check_notice( $status ) {
+		$notices = array(
+			Include_Checker::STATUS_ACTIVE        => array( 'notice-success', __( 'Nginx is serving the current generated configuration.', 'getpagespeed-cache-configuration' ) ),
+			Include_Checker::STATUS_STALE         => array( 'notice-warning', __( 'Nginx includes the configuration but has not been reloaded since it was last generated. Run: nginx -t && systemctl reload nginx', 'getpagespeed-cache-configuration' ) ),
+			Include_Checker::STATUS_MISSING       => array( 'notice-error', __( 'Nginx did not answer the probe. The include line is probably missing from the server block of this site, or another server in front of Nginx answered instead.', 'getpagespeed-cache-configuration' ) ),
+			Include_Checker::STATUS_UNREACHABLE   => array( 'notice-warning', __( 'WordPress could not request its own site address, so the check is inconclusive.', 'getpagespeed-cache-configuration' ) ),
+			Include_Checker::STATUS_NOT_GENERATED => array( 'notice-error', __( 'There is no generated configuration to check. Regenerate the configuration first.', 'getpagespeed-cache-configuration' ) ),
+		);
+
+		return isset( $notices[ $status ] ) ? $notices[ $status ] : null;
 	}
 
 	/** @return void */
@@ -180,6 +253,14 @@ nginx -t &amp;&amp; systemctl reload nginx</code></pre>
 			echo '<div class="notice notice-error"><p>' . esc_html( $this->config_writer->get_last_error() ) . '</p></div>';
 		}
 
+		// Display-only result flag set by the nonce-checked check handler's redirect.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$check  = isset( $_GET['getpagespeed_cache_configuration_check'] ) ? sanitize_key( wp_unslash( $_GET['getpagespeed_cache_configuration_check'] ) ) : '';
+		$notice = $this->get_check_notice( $check );
+		if ( $notice ) {
+			echo '<div class="notice ' . esc_attr( $notice[0] ) . '"><p>' . esc_html( $notice[1] ) . '</p></div>';
+		}
+
 		$legacy_file = $this->config_writer->get_legacy_output_file();
 		if ( $legacy_file !== $this->config_writer->get_output_file() && file_exists( $legacy_file ) ) {
 			echo '<div class="notice notice-warning"><p>' . esc_html(
@@ -192,8 +273,13 @@ nginx -t &amp;&amp; systemctl reload nginx</code></pre>
 			) . '</p></div>';
 		}
 
-		if ( ! defined( 'WP_ROCKET_VERSION' ) ) {
-			echo '<div class="notice notice-warning"><p>' . esc_html__( 'WP Rocket is not active. The configuration can be generated, but there will be no WP Rocket cache files to serve.', 'getpagespeed-cache-configuration' ) . '</p></div>';
+		$integrations = $this->config_writer->get_integrations();
+		if ( ! $integrations->get_detected() ) {
+			echo '<div class="notice notice-warning"><p>' . esc_html__( 'No supported cache plugin is active (WP Rocket or WP Super Cache). The configuration can be generated, but there will be no cache files to serve.', 'getpagespeed-cache-configuration' ) . '</p></div>';
+		}
+
+		foreach ( $integrations->get_active()->get_notices() as $message ) {
+			echo '<div class="notice notice-warning"><p>' . esc_html( $message ) . '</p></div>';
 		}
 	}
 }

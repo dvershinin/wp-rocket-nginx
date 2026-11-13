@@ -5,7 +5,12 @@
 
 require __DIR__ . '/bootstrap.php';
 
+use GetPageSpeedCacheConfiguration\Admin_Page;
 use GetPageSpeedCacheConfiguration\Config_Writer;
+use GetPageSpeedCacheConfiguration\Include_Checker;
+use GetPageSpeedCacheConfiguration\Integrations;
+use GetPageSpeedCacheConfiguration\Integrations\WP_Rocket;
+use GetPageSpeedCacheConfiguration\Integrations\WP_Super_Cache;
 use GetPageSpeedCacheConfiguration\Settings_Reader;
 
 $failures = 0;
@@ -42,28 +47,53 @@ function new_writer() {
 	return new Config_Writer( new Settings_Reader() );
 }
 
+function new_rocket() {
+	return new WP_Rocket( new Settings_Reader() );
+}
+
+/**
+ * Run a callback while a simulated WP Super Cache configuration file exists.
+ *
+ * The file uses the documented wp-cache-config.php format: plain PHP variable assignments.
+ */
+function with_wpsc_config( $assignments, $callback ) {
+	if ( ! defined( 'WPCACHEHOME' ) ) {
+		define( 'WPCACHEHOME', WP_CONTENT_DIR . '/plugins/wp-super-cache/' );
+	}
+
+	$file = WP_CONTENT_DIR . '/wp-cache-config.php';
+	wp_mkdir_p( WP_CONTENT_DIR );
+	file_put_contents( $file, "<?php\n\$cache_enabled = true;\n\$super_cache_enabled = true;\n\$cache_path = WP_CONTENT_DIR . '/cache/';\n" . $assignments . "\n" );
+
+	try {
+		$callback();
+	} finally {
+		unlink( $file );
+	}
+}
+
 test_case(
 	'default settings are safe and deterministic',
 	function () {
 		$reader = new Settings_Reader();
 		assert_same( false, $reader->is_debug_enabled(), 'Debug must default off.' );
 		assert_same( '90d', $reader->get_css_expiration(), 'Static expiration should track Rocket-Nginx 3.1.2.' );
-		assert_true( in_array( 'utm_source', $reader->get_query_strings_ignore(), true ), 'UTM parameters should be ignored.' );
-		assert_same( 'not_v_a_l_i_d', $reader->get_mobile_user_agent(), 'Mobile matching must be disabled without separate mobile cache files.' );
+		assert_true( in_array( 'utm_source', new_rocket()->get_query_strings_ignore(), true ), 'UTM parameters should be ignored.' );
+		assert_same( 'not_v_a_l_i_d', new_rocket()->get_mobile_user_agent(), 'Mobile matching must be disabled without separate mobile cache files.' );
 	}
 );
 
 test_case(
 	'WP Rocket query strings and cookies are normalized',
 	function () {
-		$GLOBALS['wp_options'][ Settings_Reader::WP_ROCKET_OPTION ] = array(
+		$GLOBALS['wp_options'][ WP_Rocket::OPTION_NAME ] = array(
 			'cache_query_strings'    => array( 'amp', 'country', 'bad; include evil', 'amp' ),
 			'cache_reject_cookies'   => array( 'membership_[0-9]+', "bad\nset evil" ),
 			'cache_mobile'           => 1,
 			'do_caching_mobile_files' => 1,
 		);
 
-		$reader = new Settings_Reader();
+		$reader = new_rocket();
 		assert_same( array( 'amp', 'country' ), $reader->get_query_strings_cache(), 'Only unique valid parameter names are allowed.' );
 		assert_true( in_array( 'membership_[0-9]+', $reader->get_cache_reject_cookies(), true ), 'Valid cookie regexes should survive.' );
 		assert_true( ! in_array( "bad\nset evil", $reader->get_cache_reject_cookies(), true ), 'Directive injection must be rejected.' );
@@ -122,6 +152,295 @@ test_case(
 		} finally {
 			unset( $GLOBALS['content_url'] );
 		}
+	}
+);
+
+test_case(
+	'WP Rocket stays the default integration and a filter can force another',
+	function () {
+		$integrations = new Integrations( new Settings_Reader() );
+		assert_same( array( 'wp-rocket', 'wp-super-cache' ), array_keys( $integrations->all() ), 'Both integrations must be registered as peers.' );
+		assert_same( null, $integrations->get_detected(), 'Nothing is detected without a cache plugin.' );
+		assert_same( 'wp-rocket', $integrations->get_active()->get_id(), 'Pre-1.3.0 behavior must be kept when nothing is detected.' );
+		assert_true( false !== strpos( new_writer()->generate(), 'Serves WP Rocket cache files' ), 'The default configuration must be the WP Rocket one.' );
+
+		$GLOBALS['wp_filters']['getpagespeed_cache_configuration_integration'] = array(
+			function () {
+				return 'wp-super-cache';
+			},
+		);
+		try {
+			assert_same( 'wp-super-cache', $integrations->get_active()->get_id(), 'The filter must force an integration.' );
+		} finally {
+			unset( $GLOBALS['wp_filters']['getpagespeed_cache_configuration_integration'] );
+		}
+	}
+);
+
+test_case(
+	'the probe token identifies the generated content',
+	function () {
+		$GLOBALS['wp_options'][ Settings_Reader::OPTION_NAME ] = array( 'debug' => false );
+		$first = new_writer()->generate();
+		assert_same( 1, preg_match( '/return 200 "(gpscc:wp-rocket:[a-f0-9]{12})";/', $first, $one ), 'The probe location must carry a token.' );
+		assert_same( $first, new_writer()->generate(), 'Generation must be deterministic.' );
+
+		$GLOBALS['wp_options'][ Settings_Reader::OPTION_NAME ] = array( 'debug' => true );
+		preg_match( '/return 200 "(gpscc:wp-rocket:[a-f0-9]{12})";/', new_writer()->generate(), $two );
+		assert_true( $one[1] !== $two[1], 'Different content must produce a different token.' );
+	}
+);
+
+test_case(
+	'WP Super Cache is detected from its configuration file',
+	function () {
+		with_wpsc_config(
+			'',
+			function () {
+				$integrations = new Integrations( new Settings_Reader() );
+				assert_same( 'wp-super-cache', $integrations->get_detected()->get_id(), 'Enabled caching must be detected.' );
+
+				$config = new_writer()->generate();
+				assert_true( ! is_wp_error( $config ), 'Generation should succeed.' );
+				assert_same( 0, preg_match( '/\{\{\w+\}\}/', $config ), 'Every template placeholder must be replaced.' );
+				assert_true( false !== strpos( $config, 'set $gpscc_url "/wp-content/cache/supercache/$host$gpscc_dir/index$gpscc_suffix.html";' ), 'The lookup must follow the supercache layout.' );
+				assert_true( false !== strpos( $config, 'location ~ ^/wp\-content/cache/supercache/.*\.html$ {' ), 'Cache files need a dedicated location.' );
+				assert_true( false !== strpos( $config, '(comment_author_|wordpress_logged_in|wp-postpass_)' ), 'The vendor cookie rule must be mirrored.' );
+				assert_true( false !== strpos( $config, 'add_header Cache-Control "max-age=3, must-revalidate";' ), 'The vendor Cache-Control must be the default.' );
+				assert_true( false !== strpos( $config, 'gpscc:wp-super-cache:' ), 'The probe must name the integration.' );
+				assert_true( false !== strpos( $config, 'location ~* \\.css$' ), 'Static asset locations are shared by every integration.' );
+				assert_true( false === strpos( $config, '$rocket_' ) && false === strpos( $config, 'X-Rocket-Nginx' ), 'No WP Rocket names may leak into another integration.' );
+				assert_same( array(), $integrations->get_active()->get_notices(), 'A healthy setup has no warnings.' );
+			}
+		);
+
+		with_wpsc_config(
+			'$cache_enabled = false;',
+			function () {
+				$integrations = new Integrations( new Settings_Reader() );
+				assert_same( null, $integrations->get_detected(), 'Disabled caching must not be detected.' );
+				assert_same( 1, count( $integrations->all()['wp-super-cache']->get_notices() ), 'Disabled caching must be reported.' );
+			}
+		);
+	}
+);
+
+test_case(
+	'WP Super Cache settings switch the optional rules',
+	function () {
+		with_wpsc_config(
+			'',
+			function () {
+				$GLOBALS['wp_options']['permalink_structure'] = '/%postname%';
+				$config = new_writer()->generate();
+				assert_true( false === strpos( $config, 'No trailing slash"' ), 'No slash requirement without trailing-slash permalinks.' );
+				assert_true( false === strpos( $config, '$gpscc_gzip' ), 'No gzip lookup while compression is off.' );
+				assert_true( false === strpos( $config, 'Mobile user agent' ), 'No mobile rule while mobile support is off.' );
+				assert_true( false === strpos( $config, 'if ($http_cookie != "")' ), 'Unrelated cookies must not bypass by default.' );
+				assert_true( false === strpos( $config, 'utm_source' ), 'Tracking parameters are stripped only when WP Super Cache ignores them.' );
+			}
+		);
+
+		with_wpsc_config(
+			'$cache_compression = 1; $wp_cache_not_logged_in = 1; $wp_cache_mobile_enabled = 1;'
+			. '$wp_cache_mobile_browsers = "Android, Elaine/3.0, 2.0 MMP"; $wp_cache_mobile_prefixes = "w3c , acs-";'
+			. '$wpsc_ignore_tracking_parameters = 1; $wpsc_tracking_parameters = array( "utm_source", "bad name" );'
+			. '$wpsc_cookies = array( "currency" ); $wpsc_rejected_cookies = array( "shop_[0-9]+" );',
+			function () {
+				$GLOBALS['wp_options']['permalink_structure'] = '/%postname%/';
+				$config = new_writer()->generate();
+				assert_true( false !== strpos( $config, 'if ($gpscc_uri_path !~ "/$") {' ), 'Trailing-slash permalinks require the slash.' );
+				assert_true( false !== strpos( $config, 'if (-f "$gpscc_file$gpscc_gzip") {' ), 'Compression must look for the .gz sibling.' );
+				assert_true( false !== strpos( $config, 'if ($http_cookie != "") {' ), 'The any-cookie setting must bypass.' );
+				assert_true( false !== strpos( $config, 'if ($http_user_agent ~* "(Android|Elaine/3.0|2.0 MMP)") {' ), 'Mobile browsers must be matched as WP Super Cache writes them.' );
+				assert_true( false !== strpos( $config, 'if ($http_user_agent ~* "^(w3c|acs-)") {' ), 'Mobile prefixes must be anchored.' );
+				assert_true( false !== strpos( $config, 'utm_source=[^&]*' ), 'Configured tracking parameters must be stripped.' );
+				assert_true( false === strpos( $config, 'bad name' ), 'Invalid parameter names must be dropped.' );
+				assert_true( false !== strpos( $config, '|currency|shop_[0-9]+)' ), 'Extra and rejected cookies must bypass.' );
+				unset( $GLOBALS['wp_options']['permalink_structure'] );
+			}
+		);
+	}
+);
+
+test_case(
+	'WP Super Cache values cannot inject Nginx directives',
+	function () {
+		with_wpsc_config(
+			'$cache_path = "/srv/elsewhere/cache/"; $wp_cache_mobile_enabled = 1;'
+			. '$wp_cache_mobile_browsers = "Android, evil\") { return 200; } #, open(, tail\\\\"; $wp_cache_mobile_prefixes = array( "x" );'
+			. '$wpsc_cookies = array( "ok", "bad\"; return 200 \"x", "new\nline", "trail\\\\", "shop_(" );'
+			. '$wpsc_rejected_cookies = array( "a\"b", "c;d", array( "x" ), "x)(?=NEVER", "dotted\\.name" );'
+			. '$wpsc_ignore_tracking_parameters = 1; $wpsc_tracking_parameters = "not-an-array";',
+			function () {
+				$GLOBALS['wp_options']['blog_charset'] = 'UTF-8; return 200';
+				$integration = new WP_Super_Cache( new Settings_Reader() );
+				$config      = new_writer()->generate();
+
+				assert_same( 'wp-content/cache/supercache', $integration->get_cache_uri(), 'A cache path outside the content directory must fall back to the default.' );
+				assert_same( 1, count( $integration->get_notices() ), 'An unservable cache path must be reported.' );
+				assert_true( false === strpos( $config, 'elsewhere' ), 'A foreign path must never reach the configuration.' );
+				assert_true( false === strpos( $config, 'return 200;' ) && false === strpos( $config, 'return 200 "x' ), 'Directive injection must be rejected.' );
+				assert_true( false !== strpos( $config, 'if ($http_user_agent ~* "(Android)") {' ), 'Only clean mobile browsers survive.' );
+				assert_true( false !== strpos( $config, '(comment_author_|wordpress_logged_in|wp-postpass_|ok|dotted\.name)' ), 'Only clean, complete cookie patterns survive.' );
+				assert_same( 1, count( $integration->get_notices() ), 'Sanity: still one notice.' );
+				assert_true( false !== strpos( $config, 'charset UTF-8;' ), 'An invalid charset must fall back to UTF-8.' );
+				assert_same( 2, preg_match_all( '/^\s*charset /m', $config ), 'Only the two cache locations declare a charset.' );
+				unset( $GLOBALS['wp_options']['blog_charset'] );
+			}
+		);
+
+		with_wpsc_config(
+			'$cache_path = WP_CONTENT_DIR . "/cache/../../etc/";',
+			function () {
+				assert_same( 'wp-content/cache/supercache', ( new WP_Super_Cache( new Settings_Reader() ) )->get_cache_uri(), 'Parent-directory segments must be rejected.' );
+			}
+		);
+
+		with_wpsc_config(
+			'$cache_path = WP_CONTENT_DIR . "/site.cache/pages";',
+			function () {
+				$config = new_writer()->generate();
+				assert_true( false !== strpos( $config, '"/wp-content/site.cache/pages/supercache/$host' ), 'A relocated cache inside the content directory must be honored.' );
+				assert_true( false !== strpos( $config, 'location ~ ^/wp\-content/site\.cache/pages/supercache/.*\.html$ {' ), 'The location regex must escape the path.' );
+			}
+		);
+	}
+);
+
+test_case(
+	'a broken WP Super Cache configuration file falls back to defaults',
+	function () {
+		with_wpsc_config(
+			'this is not php (',
+			function () {
+				$integrations = new Integrations( new Settings_Reader() );
+				assert_same( null, $integrations->get_detected(), 'An unreadable configuration must not be detected.' );
+			}
+		);
+	}
+);
+
+test_case(
+	'a changed cache plugin or configuration file regenerates once',
+	function () {
+		$GLOBALS['wp_options'] = array();
+		$writer                = new_writer();
+		assert_same( true, $writer->maybe_regenerate(), 'The first run after an upgrade must regenerate.' );
+		assert_same( 'wp-rocket:', get_option( Config_Writer::SOURCE_TOKEN_OPTION ), 'The source token must be recorded.' );
+		assert_same( false, $writer->maybe_regenerate(), 'An unchanged source must not regenerate.' );
+
+		with_wpsc_config(
+			'',
+			function () {
+				assert_same( true, new_writer()->maybe_regenerate(), 'Switching the cache plugin must regenerate.' );
+				assert_true( false !== strpos( file_get_contents( new_writer()->get_output_file() ), 'gpscc:wp-super-cache:' ), 'The installed file must follow the detected plugin.' );
+				assert_same( false, new_writer()->maybe_regenerate(), 'An unchanged configuration file must not regenerate.' );
+
+				file_put_contents( WP_CONTENT_DIR . '/wp-cache-config.php', "\n\$cache_compression = 1;\n", FILE_APPEND );
+				assert_same( true, new_writer()->maybe_regenerate(), 'A rewritten configuration file must regenerate.' );
+				assert_true( false !== strpos( file_get_contents( new_writer()->get_output_file() ), '$gpscc_gzip' ), 'The new setting must reach the installed file.' );
+			}
+		);
+
+		assert_same( true, new_writer()->maybe_regenerate(), 'Deactivating the cache plugin must regenerate.' );
+	}
+);
+
+test_case(
+	'only an administrator page load can trigger change detection',
+	function () {
+		require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'getpagespeed-cache-configuration.php';
+		$plugin = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration();
+		$GLOBALS['wp_options'] = array();
+
+		assert_same( false, $plugin->maybe_regenerate_config(), 'An anonymous admin-post request must not write.' );
+		$GLOBALS['current_user_caps'] = array( 'manage_options' => true );
+		$GLOBALS['doing_ajax']        = true;
+		assert_same( false, $plugin->maybe_regenerate_config(), 'An AJAX request must not write.' );
+		assert_same( false, get_option( Config_Writer::SOURCE_TOKEN_OPTION ), 'Nothing may be recorded for refused requests.' );
+		$GLOBALS['doing_ajax'] = false;
+		assert_same( true, $plugin->maybe_regenerate_config(), 'An administrator page load regenerates.' );
+		unset( $GLOBALS['current_user_caps'], $GLOBALS['doing_ajax'] );
+	}
+);
+
+test_case(
+	'a foreign rewrite-condition filter is reported',
+	function () {
+		with_wpsc_config(
+			'',
+			function () {
+				$GLOBALS['wp_filters']['supercacherewriteconditions'] = array( 'strval' );
+				try {
+					assert_same( 1, count( ( new WP_Super_Cache( new Settings_Reader() ) )->get_notices() ), 'Untranslatable vendor conditions must be reported.' );
+				} finally {
+					unset( $GLOBALS['wp_filters']['supercacherewriteconditions'] );
+				}
+			}
+		);
+	}
+);
+
+test_case(
+	'regex fragments must be complete patterns',
+	function () {
+		$kept = GetPageSpeedCacheConfiguration\Nginx_Syntax::regex_fragments( array( 'membership_[0-9]+', 'a|b', 'end$', 'open(', 'close)', 'x)(?=y', 'trail\\', 'two\\\\', "ctl\x01", '[bad' ) );
+		assert_same( array( 'membership_[0-9]+', 'a|b', 'end$' ), $kept, 'Unbalanced, dangling and control-character fragments must be dropped.' );
+	}
+);
+
+test_case(
+	'the include check tells active, stale, missing and unreachable apart',
+	function () {
+		$writer = new_writer();
+		assert_same( true, $writer->write(), 'Write should succeed.' );
+		$token = $writer->get_installed_probe_token();
+		assert_same( 1, preg_match( '/^gpscc:wp-rocket:[a-f0-9]{12}$/', $token ), 'The installed file must expose its token.' );
+
+		$requested = array();
+		$check     = function ( $response ) use ( $writer, &$requested ) {
+			$checker = new Include_Checker(
+				$writer,
+				function ( $url ) use ( $response, &$requested ) {
+					$requested[] = $url;
+					return $response;
+				}
+			);
+			return $checker->check();
+		};
+
+		assert_same( Include_Checker::STATUS_ACTIVE, $check( array( 'code' => 200, 'body' => $token . "\n" ) ), 'A matching token means Nginx loaded this file.' );
+		assert_same( Include_Checker::STATUS_STALE, $check( array( 'code' => 200, 'body' => 'gpscc:wp-rocket:000000000000' ) ), 'Another token means Nginx was not reloaded.' );
+		assert_same( Include_Checker::STATUS_MISSING, $check( array( 'code' => 404, 'body' => '<html>Not found</html>' ) ), 'A WordPress 404 means the include is missing.' );
+		assert_same( Include_Checker::STATUS_MISSING, $check( array( 'code' => 200, 'body' => '<html>Home page</html>' ) ), 'A page that is not the probe means the include is missing.' );
+		assert_same( Include_Checker::STATUS_MISSING, $check( array( 'code' => 403, 'body' => $token ) ), 'Only a 200 answer counts.' );
+		assert_same( Include_Checker::STATUS_UNREACHABLE, $check( new WP_Error( 'http_request_failed', 'timeout' ) ), 'A failed request is inconclusive.' );
+		assert_same( 'https://example.com/getpagespeed-cache-configuration-probe', $requested[0], 'The probe is requested on the site host.' );
+
+		$GLOBALS['home_url'] = 'http://example.com:8080/blog';
+		try {
+			$check( array() );
+			assert_same( 'http://example.com:8080/getpagespeed-cache-configuration-probe', end( $requested ), 'A subdirectory install is probed at the server root.' );
+		} finally {
+			unset( $GLOBALS['home_url'] );
+		}
+
+		unlink( $writer->get_output_file() );
+		assert_same( Include_Checker::STATUS_NOT_GENERATED, $check( array( 'code' => 200, 'body' => $token ) ), 'Nothing to compare without a generated file.' );
+	}
+);
+
+test_case(
+	'every include-check status has a notice and unknown input has none',
+	function () {
+		$page = new Admin_Page( new_writer() );
+		foreach ( array( 'active', 'stale', 'missing', 'unreachable', 'not_generated' ) as $status ) {
+			$notice = $page->get_check_notice( $status );
+			assert_true( is_array( $notice ) && 0 === strpos( $notice[0], 'notice-' ) && '' !== $notice[1], "Status {$status} needs a notice." );
+		}
+		assert_same( null, $page->get_check_notice( 'anything-else' ), 'Unknown query values must render nothing.' );
+		assert_same( null, $page->get_check_notice( '' ), 'No flag must render nothing.' );
 	}
 );
 
