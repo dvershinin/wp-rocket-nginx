@@ -9,7 +9,7 @@ while [ ! -s "$config_file" ]; do
 done
 
 watch_config() {
-    while inotifywait --quiet --event close_write,create,move "$config_dir"; do
+    while inotifywait --quiet --event close_write,create,move,delete "$config_dir"; do
         if nginx -t >/dev/null 2>&1; then
             nginx -s reload
         fi

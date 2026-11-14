@@ -32,14 +32,33 @@ add_action(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
 				'callback'            => function () {
-					$writer  = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration()->get_config_writer();
-					$checker = new GetPageSpeedCacheConfiguration\Include_Checker( $writer );
+					$plugin          = GetPageSpeedCacheConfiguration\getpagespeed_cache_configuration();
+					$writer          = $plugin->get_config_writer();
+					$brotli_checker  = new GetPageSpeedCacheConfiguration\Brotli_Checker( $writer );
+					$include_checker = new GetPageSpeedCacheConfiguration\Include_Checker( $writer );
+
+					// Same order as Admin_Page::handle_check().
+					$brotli_changed = $brotli_checker->refresh();
+					$status         = $include_checker->check();
 
 					return array(
-						'updated' => true,
-						'status'  => $checker->check(),
+						'updated'        => true,
+						'status'         => $status,
+						'brotli'         => (string) get_option( GetPageSpeedCacheConfiguration\Brotli_Checker::OPTION_NAME, 'unknown' ),
+						'brotli_changed' => $brotli_changed,
+						'token'          => $writer->get_installed_probe_token(),
 					);
 				},
+			)
+		);
+
+		register_rest_route(
+			'getpagespeed-cache-configuration-test/v1',
+			'/brotli',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => 'getpagespeed_cache_configuration_test_toggle_brotli',
 			)
 		);
 
@@ -195,6 +214,10 @@ function getpagespeed_cache_configuration_test_create_cache( WP_REST_Request $re
 		return new WP_Error( 'write_failed', 'Could not create cache file.', array( 'status' => 500 ) );
 	}
 
+	if ( isset( $data['gzip_content'] ) && false === file_put_contents( $directory . $filename . '_gzip', gzencode( (string) $data['gzip_content'] ) ) ) {
+		return new WP_Error( 'write_failed', 'Could not create pre-compressed cache file.', array( 'status' => 500 ) );
+	}
+
 	if ( ! empty( $data['mobile_marker'] ) ) {
 		file_put_contents( $directory . '.mobile-active', '' );
 	}
@@ -203,6 +226,27 @@ function getpagespeed_cache_configuration_test_create_cache( WP_REST_Request $re
 		'created' => true,
 		'file'    => $directory . $filename,
 	);
+}
+
+/**
+ * Create or delete the http-level toggle that turns Brotli on in the Nginx container.
+ *
+ * @param WP_REST_Request $request Request.
+ * @return array|WP_Error
+ */
+function getpagespeed_cache_configuration_test_toggle_brotli( WP_REST_Request $request ) {
+	$data = $request->get_json_params();
+	$file = WP_CONTENT_DIR . '/uploads/getpagespeed-cache-configuration/e2e-brotli.http';
+
+	if ( ! empty( $data['enabled'] ) ) {
+		if ( false === file_put_contents( $file, "brotli on;\n" ) ) {
+			return new WP_Error( 'write_failed', 'Could not create the Brotli toggle.', array( 'status' => 500 ) );
+		}
+	} elseif ( file_exists( $file ) && ! unlink( $file ) ) {
+		return new WP_Error( 'delete_failed', 'Could not delete the Brotli toggle.', array( 'status' => 500 ) );
+	}
+
+	return array( 'updated' => true );
 }
 
 /**

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 - 2026-11-14
+
+- Add a Brotli check to "Check Nginx include". The plugin requests the front page as a client that accepts only Brotli and remembers whether the answer was Brotli-encoded. PHP cannot see which modules Nginx loaded, and the generated file never contains a module directive, so the response of the site is the signal.
+- WP Rocket: emit the Rocket-Nginx rule that keeps the gzip file away from Brotli clients only when Brotli is in use or has never been checked. Once a check shows no Brotli, clients that accept it get WP Rocket's pre-compressed `_gzip` file instead of a plain file that Nginx gzips again on every request. An inconclusive check keeps the previous result. The filter `getpagespeed_cache_configuration_brotli_status` (`active` or `inactive`) forces one.
+- Show the Brotli status on the settings page, with a link to the Brotli module in the GetPageSpeed repository when Brotli is not detected, and a link to GetPageSpeed Amplify.
+- The e2e Nginx image carries a real Brotli module, off by default and switched on during the run.
+
 ## 1.3.0 - 2026-11-13
 
 - Add WP Super Cache as a second integration. The generated configuration applies the same conditions as the mod_rewrite rules WP Super Cache writes for Apache: HTTPS and gzip variants, cookie, query-string, trailing-slash and mobile bypasses, read from `wp-cache-config.php`.

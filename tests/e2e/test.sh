@@ -79,6 +79,32 @@ assert_body() {
     grep -Fq "$expected" "$body_file" || fail "Expected body to contain: ${expected}"
 }
 
+assert_no_header() {
+    name=$1
+    message=$2
+    if grep -Eiq "^${name}:" "$headers_file"; then
+        fail "$message"
+    fi
+}
+
+# Poll until a request to /brotli-page/ accepting only Brotli does (or does
+# not) come back Brotli-encoded; the Nginx container reloads asynchronously.
+wait_for_brotli() {
+    expected=$1
+    attempt=0
+    while [ "$attempt" -lt 20 ]; do
+        request --header 'Accept-Encoding: br' "${base_url}/brotli-page/"
+        if grep -Eiq '^Content-Encoding: br([[:space:]]|$)' "$headers_file"; then
+            [ "$expected" = on ] && return 0
+        else
+            [ "$expected" = off ] && return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    fail "Nginx did not switch Brotli ${expected}"
+}
+
 compose up --detach mysql wordpress
 compose run --rm setup
 compose up --detach --build --wait nginx
@@ -131,9 +157,58 @@ request "${base_url}/wp-content/uploads/getpagespeed-cache-configuration/default
 grep -Eq '^HTTP/[0-9.]+ 403' "$headers_file" || fail 'Generated configuration must return HTTP 403.'
 echo 'PASS generated configuration is not web-accessible'
 
+post_json cache '{"path":"/brotli-page/","content":"BROTLI_PLAIN_MARKER padded so that the page is comfortably longer than twenty bytes","gzip_content":"BROTLI_GZIP_MARKER"}'
+echo 'PASS pre-compressed WP Rocket cache file is created'
+
+request --header 'Accept-Encoding: gzip, br' "${base_url}/brotli-page/"
+assert_header X-Rocket-Nginx-Serving-Static HIT
+assert_no_header Content-Encoding 'Before the Brotli check the plain file must be served without Content-Encoding.'
+assert_body BROTLI_PLAIN_MARKER
+echo 'PASS unknown Brotli status keeps serving the plain file to gzip and br clients'
+
+post_json check '{}'
+grep -Fq '"brotli":"inactive"' "$body_file" || fail "Brotli check must report inactive, got: $(cat "$body_file")"
+grep -Fq '"brotli_changed":true' "$body_file" || fail "Brotli check must regenerate the configuration, got: $(cat "$body_file")"
+wait_for_reload
+echo 'PASS Brotli check detects that Nginx does not compress with Brotli'
+
+request --header 'Accept-Encoding: gzip, br' "${base_url}/brotli-page/"
+assert_header X-Rocket-Nginx-Serving-Static HIT
+assert_header Content-Encoding gzip
+gzip --decompress --stdout <"$body_file" | grep -Fq BROTLI_GZIP_MARKER || fail 'Expected the gzip file content for a gzip, br client without Brotli.'
+request --header 'Accept-Encoding: identity' "${base_url}/brotli-page/"
+assert_header X-Rocket-Nginx-Serving-Static HIT
+assert_no_header Content-Encoding 'A client that accepts no compression must receive the plain file.'
+assert_body BROTLI_PLAIN_MARKER
+echo 'PASS inactive Brotli serves the pre-compressed file only to gzip clients'
+
 post_json check '{}'
 grep -Fq '"status":"active"' "$body_file" || fail "Include check must report active, got: $(cat "$body_file")"
+grep -Fq '"brotli_changed":false' "$body_file" || fail "A repeated Brotli check must not regenerate, got: $(cat "$body_file")"
 echo 'PASS include check confirms Nginx loaded the WP Rocket configuration'
+
+post_json brotli '{"enabled":true}'
+wait_for_brotli on
+request --header 'Accept-Encoding: gzip, br' "${base_url}/brotli-page/"
+assert_header Content-Encoding gzip
+echo 'PASS enabling Brotli in Nginx alone does not change the stored status'
+
+post_json check '{}'
+grep -Fq '"brotli":"active"' "$body_file" || fail "Brotli check must report active, got: $(cat "$body_file")"
+grep -Fq '"brotli_changed":true' "$body_file" || fail "Brotli check must regenerate the configuration, got: $(cat "$body_file")"
+wait_for_reload
+request --header 'Accept-Encoding: gzip, br' "${base_url}/brotli-page/"
+assert_header X-Rocket-Nginx-Serving-Static HIT
+assert_header Content-Encoding br
+echo 'PASS active Brotli lets Nginx compress the plain file for br clients'
+
+post_json brotli '{"enabled":false}'
+wait_for_brotli off
+post_json check '{}'
+grep -Fq '"brotli":"inactive"' "$body_file" || fail "Brotli check must report inactive again, got: $(cat "$body_file")"
+grep -Fq '"brotli_changed":true' "$body_file" || fail "Brotli check must regenerate the configuration, got: $(cat "$body_file")"
+wait_for_reload
+echo 'PASS Brotli check follows Nginx turning Brotli off again'
 
 # Switch to WP Super Cache: its settings live in wp-cache-config.php, not in an option.
 post_json wp-super-cache '{"cache_compression":0}'
@@ -207,4 +282,4 @@ post_json check '{}'
 grep -Fq '"status":"active"' "$body_file" || fail "Include check must report active, got: $(cat "$body_file")"
 echo 'PASS include check confirms Nginx loaded the WP Super Cache configuration'
 
-echo '19 E2E tests, 0 failures'
+echo '26 E2E tests, 0 failures'

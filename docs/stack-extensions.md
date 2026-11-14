@@ -5,7 +5,8 @@ GetPageSpeed stack (the packages repository and its NGINX modules, Amplify).
 Module facts are read from `nginx-extras-docs` and `apt-nginx-extras-docs`,
 Amplify facts from its source, guideline text from wordpress.org on that date.
 
-Nothing here is implemented. Daniel picks; unpicked items stay recorded.
+Options 1 and 3 shipped together in 1.4.0 on 2026-11-14 (Daniel's pick). Options 2,
+4 and 5 are not implemented and stay recorded here.
 
 ## Constraints that shape every option
 

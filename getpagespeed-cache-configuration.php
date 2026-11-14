@@ -3,7 +3,7 @@
  * Plugin Name: GetPageSpeed Cache Configuration
  * Plugin URI: https://github.com/dvershinin/getpagespeed-cache-configuration
  * Description: Generates Nginx configuration from page-cache plugin settings so Nginx can serve cached pages without PHP. Supports WP Rocket and WP Super Cache.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: Danila Vershinin
  * Author URI: https://www.getpagespeed.com/
  * Requires at least: 6.0
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION' ) ) {
-	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.3.0' );
+	define( 'GETPAGESPEED_CACHE_CONFIGURATION_VERSION', '1.4.0' );
 }
 if ( ! defined( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE' ) ) {
 	define( 'GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_FILE', __FILE__ );
@@ -39,6 +39,7 @@ require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/integration
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-integrations.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-config-writer.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-include-checker.php';
+require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-brotli-checker.php';
 require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/class-admin-page.php';
 
 /**

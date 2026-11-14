@@ -124,8 +124,8 @@ function add_filter( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	$GLOBALS['registered_filters'][ $tag ][] = $callback;
 }
 
-function home_url() {
-	return isset( $GLOBALS['home_url'] ) ? $GLOBALS['home_url'] : 'https://example.com';
+function home_url( $path = '' ) {
+	return ( isset( $GLOBALS['home_url'] ) ? $GLOBALS['home_url'] : 'https://example.com' ) . $path;
 }
 
 function wp_json_encode( $value ) {
@@ -148,6 +148,6 @@ function __( $text, $domain = 'default' ) {
 	return $text;
 }
 
-foreach ( array( 'class-nginx-syntax', 'class-settings-reader', 'interface-integration', 'integrations/class-wp-rocket', 'integrations/class-wp-super-cache', 'class-integrations', 'class-config-writer', 'class-include-checker', 'class-admin-page' ) as $file ) {
+foreach ( array( 'class-nginx-syntax', 'class-settings-reader', 'interface-integration', 'integrations/class-wp-rocket', 'integrations/class-wp-super-cache', 'class-integrations', 'class-config-writer', 'class-include-checker', 'class-brotli-checker', 'class-admin-page' ) as $file ) {
 	require_once GETPAGESPEED_CACHE_CONFIGURATION_PLUGIN_DIR . 'includes/' . $file . '.php';
 }

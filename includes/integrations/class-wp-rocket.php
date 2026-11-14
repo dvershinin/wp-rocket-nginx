@@ -7,6 +7,7 @@
 
 namespace GetPageSpeedCacheConfiguration\Integrations;
 
+use GetPageSpeedCacheConfiguration\Brotli_Checker;
 use GetPageSpeedCacheConfiguration\Integration;
 use GetPageSpeedCacheConfiguration\Nginx_Syntax;
 use GetPageSpeedCacheConfiguration\Settings_Reader;
@@ -119,6 +120,7 @@ final class WP_Rocket implements Integration {
 			'query_string_ignore' => Nginx_Syntax::strip_query_parameters( 'rocket_args', $this->get_query_strings_ignore() ),
 			'query_string_cache'  => $this->generate_query_strings_cache(),
 			'mobile_user_agent'   => $this->get_mobile_user_agent(),
+			'brotli_override'     => $this->generate_brotli_override(),
 		);
 	}
 
@@ -210,6 +212,29 @@ final class WP_Rocket implements Integration {
 	public function get_query_strings_ignore() {
 		$values = apply_filters( 'getpagespeed_cache_configuration_query_strings_ignore', self::DEFAULT_QUERY_STRINGS_IGNORE );
 		return Nginx_Syntax::parameter_names( $values );
+	}
+
+	/**
+	 * Generate the rule that keeps the gzip file away from Brotli clients.
+	 *
+	 * WP Rocket writes no Brotli files, so a Brotli client is given the plain
+	 * file for Nginx to compress. Without Brotli in Nginx that only replaces
+	 * the pre-compressed file with gzip done again on every request, so the
+	 * rule is left out once a check has shown that Brotli is not in use.
+	 *
+	 * @return string
+	 */
+	private function generate_brotli_override() {
+		if ( Brotli_Checker::STATUS_INACTIVE === $this->settings_reader->get_brotli_status() ) {
+			return '# Brotli was not detected on this server: clients that accept it get the gzip file as well.';
+		}
+
+		$result  = "# Give clients that accept Brotli the plain file, so that Nginx compresses it with Brotli.\n";
+		$result .= "if (\$http_accept_encoding ~ br) {\n";
+		$result .= "    set \$rocket_encryption \"\";\n";
+		$result .= '}';
+
+		return $result;
 	}
 
 	/**

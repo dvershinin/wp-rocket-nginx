@@ -6,6 +6,7 @@
 require __DIR__ . '/bootstrap.php';
 
 use GetPageSpeedCacheConfiguration\Admin_Page;
+use GetPageSpeedCacheConfiguration\Brotli_Checker;
 use GetPageSpeedCacheConfiguration\Config_Writer;
 use GetPageSpeedCacheConfiguration\Include_Checker;
 use GetPageSpeedCacheConfiguration\Integrations;
@@ -441,6 +442,148 @@ test_case(
 		}
 		assert_same( null, $page->get_check_notice( 'anything-else' ), 'Unknown query values must render nothing.' );
 		assert_same( null, $page->get_check_notice( '' ), 'No flag must render nothing.' );
+	}
+);
+
+/**
+ * Build a Brotli checker whose HTTP adapter returns a fixed response.
+ */
+function new_brotli_checker( $writer, $response, &$requested = array() ) {
+	return new Brotli_Checker(
+		$writer,
+		function ( $url ) use ( $response, &$requested ) {
+			$requested[] = $url;
+			return $response;
+		}
+	);
+}
+
+test_case(
+	'the Brotli check tells active, inactive and unknown apart',
+	function () {
+		$requested = array();
+		$check     = function ( $response ) use ( &$requested ) {
+			return new_brotli_checker( new_writer(), $response, $requested )->check();
+		};
+
+		assert_same( Brotli_Checker::STATUS_ACTIVE, $check( array( 'code' => 200, 'encoding' => 'br' ) ), 'A Brotli-encoded page means Brotli is in use.' );
+		assert_same( Brotli_Checker::STATUS_ACTIVE, $check( array( 'code' => 200, 'encoding' => 'gzip, BR' ) ), 'A coding list and any letter case must be understood.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, $check( array( 'code' => 200, 'encoding' => '' ) ), 'A plain page means Brotli is not in use.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, $check( array( 'code' => 200, 'encoding' => 'gzip' ) ), 'Another coding is not Brotli.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, $check( array( 'code' => 200, 'encoding' => 'brotli-like' ) ), 'Only the exact coding name counts.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, $check( array( 'code' => 200 ) ), 'A missing header means Brotli is not in use.' );
+		assert_same( Brotli_Checker::STATUS_UNKNOWN, $check( array( 'code' => 301, 'encoding' => '' ) ), 'A redirect says nothing about the page.' );
+		assert_same( Brotli_Checker::STATUS_UNKNOWN, $check( array( 'code' => 503, 'encoding' => 'br' ) ), 'Only a 200 answer counts.' );
+		assert_same( Brotli_Checker::STATUS_UNKNOWN, $check( new WP_Error( 'http_request_failed', 'timeout' ) ), 'A failed request is inconclusive.' );
+		assert_same( 'https://example.com/', $requested[0], 'The front page is requested.' );
+	}
+);
+
+test_case(
+	'a Brotli result is remembered and decides which file Brotli clients receive',
+	function () {
+		$GLOBALS['wp_options'] = array();
+		$writer                = new_writer();
+		$override              = 'if ($http_accept_encoding ~ br) {';
+		$installed             = function () use ( $writer ) {
+			return file_get_contents( $writer->get_output_file() );
+		};
+
+		assert_same( true, $writer->write(), 'Write should succeed.' );
+		assert_true( false !== strpos( $installed(), $override ), 'An unchecked server keeps the pre-1.4.0 behavior.' );
+		assert_same( 1, preg_match( '/^if \(\$http_accept_encoding ~ gzip\) \{$/m', $installed() ), 'The gzip rule is always generated.' );
+
+		assert_same( false, new_brotli_checker( $writer, array( 'code' => 200, 'encoding' => 'br' ) )->refresh(), 'Detected Brotli leaves the configuration as it was.' );
+		assert_same( Brotli_Checker::STATUS_ACTIVE, get_option( Brotli_Checker::OPTION_NAME ), 'A conclusive result must be remembered.' );
+		assert_true( false !== strpos( $installed(), $override ), 'Detected Brotli keeps the plain file for Brotli clients.' );
+
+		assert_same( true, new_brotli_checker( $writer, array( 'code' => 200, 'encoding' => '' ) )->refresh(), 'Losing Brotli must regenerate.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, get_option( Brotli_Checker::OPTION_NAME ), 'The new result must be remembered.' );
+		assert_true( false === strpos( $installed(), $override ), 'Without Brotli the gzip file is served to every gzip client.' );
+		assert_same( 0, preg_match( '/\{\{\w+\}\}/', $installed() ), 'Every template placeholder must be replaced.' );
+
+		$token = $writer->get_installed_probe_token();
+		assert_same( false, new_brotli_checker( $writer, array( 'code' => 200, 'encoding' => 'gzip' ) )->refresh(), 'An unchanged result must not regenerate.' );
+		assert_same( false, new_brotli_checker( $writer, new WP_Error( 'http_request_failed', 'timeout' ) )->refresh(), 'An inconclusive check must not regenerate.' );
+		assert_same( false, new_brotli_checker( $writer, array( 'code' => 302, 'encoding' => 'br' ) )->refresh(), 'A redirect must not regenerate.' );
+		assert_same( Brotli_Checker::STATUS_INACTIVE, get_option( Brotli_Checker::OPTION_NAME ), 'An inconclusive check keeps the previous result.' );
+		assert_same( $token, $writer->get_installed_probe_token(), 'The installed file must be untouched.' );
+
+		assert_same( true, new_brotli_checker( $writer, array( 'code' => 200, 'encoding' => 'br' ) )->refresh(), 'Gaining Brotli must regenerate.' );
+		assert_true( false !== strpos( $installed(), $override ), 'With Brotli the plain file is served to Brotli clients again.' );
+
+		$checker = new_brotli_checker( $writer, array( 'code' => 200, 'encoding' => 'br' ) );
+		assert_same( false, $checker->remember( Brotli_Checker::STATUS_UNKNOWN ), 'An inconclusive result is not remembered.' );
+		assert_same( false, $checker->remember( "inactive;\n}" ), 'Only the two results can be stored.' );
+		assert_same( Brotli_Checker::STATUS_ACTIVE, get_option( Brotli_Checker::OPTION_NAME ), 'The stored result must be untouched.' );
+
+		$GLOBALS['wp_options'] = array();
+	}
+);
+
+test_case(
+	'the Brotli status can be forced by a filter and rejects unknown values',
+	function () {
+		$GLOBALS['wp_options'] = array( Brotli_Checker::OPTION_NAME => Brotli_Checker::STATUS_ACTIVE );
+		$reader                = new Settings_Reader();
+		$override              = 'if ($http_accept_encoding ~ br) {';
+
+		try {
+			$GLOBALS['wp_filters']['getpagespeed_cache_configuration_brotli_status'] = array(
+				function () {
+					return Brotli_Checker::STATUS_INACTIVE;
+				},
+			);
+			assert_same( Brotli_Checker::STATUS_INACTIVE, $reader->get_brotli_status(), 'The filter must win over the stored result.' );
+			assert_true( false === strpos( new_writer()->generate(), $override ), 'A forced status must reach the template.' );
+
+			$GLOBALS['wp_filters']['getpagespeed_cache_configuration_brotli_status'] = array(
+				function () {
+					return "active;\n}";
+				},
+			);
+			assert_same( Brotli_Checker::STATUS_UNKNOWN, $reader->get_brotli_status(), 'Anything but the two results is unknown.' );
+			assert_true( false !== strpos( new_writer()->generate(), $override ), 'An unknown status keeps the pre-1.4.0 behavior.' );
+		} finally {
+			unset( $GLOBALS['wp_filters']['getpagespeed_cache_configuration_brotli_status'] );
+			$GLOBALS['wp_options'] = array();
+		}
+	}
+);
+
+test_case(
+	'the Brotli status does not change the WP Super Cache configuration',
+	function () {
+		with_wpsc_config(
+			'$cache_compression = 1;',
+			function () {
+				try {
+					$GLOBALS['wp_options'] = array( Brotli_Checker::OPTION_NAME => Brotli_Checker::STATUS_ACTIVE );
+					$active                = new_writer()->generate();
+					$GLOBALS['wp_options'] = array( Brotli_Checker::OPTION_NAME => Brotli_Checker::STATUS_INACTIVE );
+					$inactive              = new_writer()->generate();
+
+					assert_true( false !== strpos( $active, 'gpscc:wp-super-cache:' ), 'Sanity: the WP Super Cache template is in use.' );
+					assert_same( $active, $inactive, 'WP Super Cache always serves its gzip file to gzip clients.' );
+					assert_same( 0, preg_match( '/\{\{\w+\}\}/', $active ), 'Every template placeholder must be replaced.' );
+				} finally {
+					$GLOBALS['wp_options'] = array();
+				}
+			}
+		);
+	}
+);
+
+test_case(
+	'every Brotli status has its own settings-page sentence',
+	function () {
+		$page      = new Admin_Page( new_writer() );
+		$sentences = array();
+		foreach ( array( Brotli_Checker::STATUS_ACTIVE, Brotli_Checker::STATUS_INACTIVE, Brotli_Checker::STATUS_UNKNOWN ) as $status ) {
+			$sentences[] = $page->get_brotli_summary( $status );
+		}
+		assert_same( 3, count( array_unique( array_filter( $sentences ) ) ), 'Each status needs a distinct sentence.' );
+		assert_same( $sentences[2], $page->get_brotli_summary( 'anything-else' ), 'Unexpected input reads as not checked.' );
 	}
 );
 

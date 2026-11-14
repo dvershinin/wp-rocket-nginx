@@ -52,6 +52,8 @@ commands through PHP.
    the location `/getpagespeed-cache-configuration-probe`, which answers with a
    token of the file's content. The check reports whether Nginx loaded the
    current file, loaded an older one (not reloaded yet), or does not include it.
+   It also requests the front page as a client that accepts only Brotli; see
+   [Brotli](#brotli).
 
 ## What is generated
 
@@ -70,6 +72,31 @@ It includes:
 - a deny rule preventing generated `.conf` files from being downloaded;
 - the probe location used by the include check;
 - optional diagnostic headers: `X-Rocket-Nginx-*` for WP Rocket, `X-GetPageSpeed-Cache*` for WP Super Cache.
+
+### Brotli
+
+WP Rocket writes gzip files only. Rocket-Nginx therefore gives a client that
+accepts Brotli the plain file, for a Brotli module to compress. Every browser
+accepts Brotli over HTTPS, so on an Nginx without such a module the
+pre-compressed files are hardly ever served and each page is gzipped again on
+every request.
+
+PHP cannot see which modules Nginx loaded, and a module directive in the
+generated file would stop Nginx from loading it on a server without that
+module. The check looks at a response instead:
+
+| Check result | Client accepts gzip and Brotli |
+|---|---|
+| Brotli-encoded front page | plain file, compressed with Brotli by Nginx |
+| front page without Brotli | pre-compressed `_gzip` file |
+| never checked, or the request failed | plain file (the behaviour before 1.4.0) |
+
+A changed result regenerates the configuration; reload Nginx afterwards. Any
+Brotli module works, including
+[the one in the GetPageSpeed repository](https://nginx-extras.getpagespeed.com/modules/brotli/).
+Brotli added by a CDN in front of Nginx also counts as in use, which keeps the
+behaviour from before 1.4.0. The WP Super Cache rules always serve its gzip
+file to gzip clients and do not depend on the result.
 
 ### WP Super Cache notes
 
@@ -93,6 +120,7 @@ Server operators can customize advanced values in code:
 - `getpagespeed_cache_configuration_config_name`
 - `getpagespeed_cache_configuration_wp_content_folder`
 - `getpagespeed_cache_configuration_integration` (`wp-rocket` or `wp-super-cache`)
+- `getpagespeed_cache_configuration_brotli_status` (`active` or `inactive`, WP Rocket)
 - `getpagespeed_cache_configuration_query_strings_ignore` (WP Rocket)
 - `getpagespeed_cache_configuration_cache_reject_cookies` (WP Rocket)
 - `getpagespeed_cache_configuration_mobile_user_agent` (WP Rocket)

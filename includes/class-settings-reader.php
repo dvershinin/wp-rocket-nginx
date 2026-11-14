@@ -41,6 +41,16 @@ final class Settings_Reader {
 	}
 
 	/**
+	 * Return whether the last check saw Nginx compress a page with Brotli.
+	 *
+	 * @return string One of the Brotli_Checker::STATUS_* constants.
+	 */
+	public function get_brotli_status() {
+		$status = (string) apply_filters( 'getpagespeed_cache_configuration_brotli_status', get_option( Brotli_Checker::OPTION_NAME, Brotli_Checker::STATUS_UNKNOWN ) );
+		return in_array( $status, array( Brotli_Checker::STATUS_ACTIVE, Brotli_Checker::STATUS_INACTIVE ), true ) ? $status : Brotli_Checker::STATUS_UNKNOWN;
+	}
+
+	/**
 	 * Return the wp-content directory name used in public URLs.
 	 *
 	 * @return string
